@@ -1,5 +1,7 @@
 import { BaseProvider } from './base-provider';
 import { CoinCapProvider } from './coincap-provider';
+import { CoinGeckoProvider } from './coingecko-provider';
+import { FinancialModelingPrepProvider } from './financialmodelingprep-provider';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { storeAsset, publishAssetUpdate } from '../services/redis-service';
@@ -25,6 +27,23 @@ export async function initProvider(): Promise<BaseProvider> {
                     config.providers.coincap.apiBaseUrl,
                     config.providers.coincap.wsUrl,
                     config.providers.coincap.apiKey
+                );
+                break;
+                
+            case 'coingecko':
+                activeProvider = new CoinGeckoProvider(
+                    config.providers.coingecko.apiBaseUrl,
+                    config.providers.coingecko.wsUrl,
+                    config.providers.coingecko.apiKey
+                );
+                break;
+                
+            case 'financialmodelingprep':
+                activeProvider = new FinancialModelingPrepProvider(
+                    config.providers.financialmodelingprep.apiBaseUrl,
+                    config.providers.financialmodelingprep.cryptoWsUrl,
+                    config.providers.financialmodelingprep.forexWsUrl,
+                    config.providers.financialmodelingprep.apiKey
                 );
                 break;
 

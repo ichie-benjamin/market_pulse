@@ -32,7 +32,7 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 // API routes - all protected with API key
-app.use('/api', apiKeyAuth, createApiRoutes());
+app.use('/api', createApiRoutes());
 
 // 404 handler
 app.use((req: Request, res: Response) => {

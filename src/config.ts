@@ -48,7 +48,7 @@ export const config = {
     // Provider config
     providers: {
         // Active provider selection
-        activeProvider: process.env.ACTIVE_PROVIDER || 'coincap',
+        activeProvider: process.env.ACTIVE_PROVIDER || 'financialmodelingprep',
 
         // Connection method preference
         connectionMethod: (process.env.PROVIDER_CONNECTION_METHOD || 'websocket') as ProviderConnectionMethod,
@@ -60,13 +60,28 @@ export const config = {
             wsUrl: process.env.COINCAP_WS_URL || 'wss://ws.coincap.io/prices?assets=ALL'
         },
 
+        // CoinGecko config
+        coingecko: {
+            apiKey: process.env.COINGECKO_API_KEY,
+            apiBaseUrl: 'https://api.coingecko.com/api/v3',
+            wsUrl: process.env.COINGECKO_WS_URL || 'wss://ws.coingecko.com/cryptocurrency'
+        },
+        
+        // Financial Modeling Prep config
+        financialmodelingprep: {
+            apiKey: process.env.FMP_API_KEY,
+            apiBaseUrl: 'https://financialmodelingprep.com',
+            cryptoWsUrl: process.env.FMP_CRYPTO_WS_URL || 'wss://crypto.financialmodelingprep.com',
+            forexWsUrl: process.env.FMP_FOREX_WS_URL || 'wss://forex.financialmodelingprep.com'
+        },
+
         // Alpaca config
-        alpaca: {
-            apiKey: process.env.ALPACA_API_KEY,
-            apiSecret: process.env.ALPACA_API_SECRET,
-            apiBaseUrl: 'https://api.alpaca.markets/v2',
-            wsUrl: process.env.ALPACA_WS_URL || 'wss://stream.data.alpaca.markets/v2/iex'
-        }
+        // alpaca: {
+        //     apiKey: process.env.ALPACA_API_KEY,
+        //     apiSecret: process.env.ALPACA_API_SECRET,
+        //     apiBaseUrl: 'https://api.alpaca.markets/v2',
+        //     wsUrl: process.env.ALPACA_WS_URL || 'wss://stream.data.alpaca.markets/v2/iex'
+        // }
     },
 
     // Asset categories to track

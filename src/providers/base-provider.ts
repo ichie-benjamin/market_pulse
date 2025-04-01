@@ -14,6 +14,7 @@ export abstract class BaseProvider extends EventEmitter {
     protected connectionMethod: ProviderConnectionMethod;
     protected apiBaseUrl: string;
     protected wsUrl: string;
+    protected forexWsUrl?: string;
     protected apiKey?: string;
     protected apiSecret?: string;
 
