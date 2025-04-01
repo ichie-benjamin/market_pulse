@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  # Development version of app service
+  app:
+    build:
+      context: .
+      target: builder
+    command: npm run dev
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./src:/app/src
+      - ./nodemon.json:/app/nodemon.json
+      - ./tsconfig.json:/app/tsconfig.json
+
+  # Add a tool for Redis management in dev mode
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: market-data-redis-commander
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    networks:
+      - market-data-network
+    depends_on:
+      - redis

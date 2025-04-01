@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # Application service
+  app:
+    build:
+      context: .
+      target: ${NODE_ENV:-production}
+    container_name: market-data-app
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=3000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DATA_TTL=${REDIS_DATA_TTL:-3600}
+      - API_KEYS=${API_KEYS:-dev_test_key}
+      - ACTIVE_PROVIDER=${ACTIVE_PROVIDER:-coincap}
+      - PROVIDER_CONNECTION_METHOD=${PROVIDER_CONNECTION_METHOD:-websocket}
+    depends_on:
+      - redis
+    networks:
+      - market-data-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Redis service
+  redis:
+    image: redis:7-alpine
+    container_name: market-data-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - market-data-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  market-data-network:
+    driver: bridge
+
+volumes:
+  redis-data:
