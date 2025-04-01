@@ -18,33 +18,102 @@ let io: Server;
  * Initialize WebSocket server
  */
 export function initWebSocketServer(server: HttpServer): Server {
-    // Create Socket.IO server
+    // Create Socket.IO server with more permissive CORS
     io = new Server(server, {
         path: config.websocket.path,
         cors: {
-            origin: '*',
-            methods: ['GET', 'POST']
-        }
+            origin: "*", // Allow all origins for testing
+            methods: ["GET", "POST"],
+            allowedHeaders: ["x-api-key"],
+            credentials: true
+        },
+        transports: ['websocket', 'polling'] // Allow polling as fallback
     });
 
-    // Set up authentication middleware
+    // Log that the server is starting
+    logger.info(`WebSocket server initializing on path: ${config.websocket.path}`);
+
+    // Set up authentication middleware with more logging
     io.use((socket: Socket, next) => {
         try {
             const apiKey = socket.handshake.auth.apiKey ||
                 socket.handshake.headers['x-api-key'] as string;
 
-            if (!apiKey || !validateApiKey(apiKey)) {
-                return next(new Error('Invalid API key'));
+            logger.info(`WebSocket auth attempt: ${socket.id}`);
+
+            if (!apiKey) {
+                logger.warn(`WebSocket auth failed: No API key provided (${socket.id})`);
+                return next(new Error('Authentication error: No API key provided'));
             }
 
+            if (!validateApiKey(apiKey)) {
+                logger.warn(`WebSocket auth failed: Invalid API key (${socket.id})`);
+                return next(new Error('Authentication error: Invalid API key'));
+            }
+
+            logger.info(`WebSocket auth success: ${socket.id}`);
             next();
         } catch (error) {
+            logger.error(`WebSocket auth error: ${error}`);
             next(new Error('Authentication error'));
         }
     });
 
     // Handle client connections
-    io.on('connection', handleConnection);
+    io.on('connection', (socket: Socket) => {
+        const clientId = socket.id;
+        logger.info(`Client connected: ${clientId}`);
+
+        // Immediately send a welcome message
+        socket.emit('welcome', {
+            message: 'Connected to MarketPulse WebSocket server',
+            timestamp: new Date().toISOString()
+        });
+
+        // Initial data subscription
+        socket.on('subscribe', async (params = {}) => {
+            logger.info(`Subscription request from ${clientId}:`, params);
+            await handleSubscribe(socket, params);
+        });
+
+        // Unsubscribe from data
+        socket.on('unsubscribe', (params = {}) => {
+            logger.info(`Unsubscription request from ${clientId}:`, params);
+            handleUnsubscribe(socket, params);
+        });
+
+        // Fetch specific asset
+        socket.on('getAsset', async (assetId: string, callback) => {
+            try {
+                logger.info(`Asset request from ${clientId}: ${assetId}`);
+                const assets = await getAssetsByIds([assetId]);
+                callback({ success: true, data: assets[0] || null });
+            } catch (error) {
+                logger.error(`Error fetching asset ${assetId}:`, error);
+                callback({ success: false, error: 'Failed to fetch asset' });
+            }
+        });
+
+        // Debug event to verify connection
+        socket.on('ping', (callback) => {
+            logger.info(`Ping from ${clientId}`);
+            if (typeof callback === 'function') {
+                callback({ time: new Date().toISOString() });
+            } else {
+                socket.emit('pong', { time: new Date().toISOString() });
+            }
+        });
+
+        // Disconnect handler
+        socket.on('disconnect', (reason) => {
+            logger.info(`Client disconnected: ${clientId}, reason: ${reason}`);
+        });
+
+        // Error handler
+        socket.on('error', (error) => {
+            logger.error(`Socket error for ${clientId}:`, error);
+        });
+    });
 
     // Listen for asset updates from Redis
     onAssetUpdate((asset: Asset) => {
@@ -61,43 +130,9 @@ export function initWebSocketServer(server: HttpServer): Server {
         io.to('all').emit('asset', asset);
     });
 
-    logger.info('WebSocket server initialized');
+    logger.info('WebSocket server initialized successfully');
 
     return io;
-}
-
-/**
- * Handle new client connection
- */
-async function handleConnection(socket: Socket): Promise<void> {
-    const clientId = socket.id;
-    logger.info(`Client connected: ${clientId}`);
-
-    // Initial data subscription
-    socket.on('subscribe', async (params) => {
-        await handleSubscribe(socket, params);
-    });
-
-    // Unsubscribe from data
-    socket.on('unsubscribe', (params) => {
-        handleUnsubscribe(socket, params);
-    });
-
-    // Fetch specific asset
-    socket.on('getAsset', async (assetId: string, callback) => {
-        try {
-            const assets = await getAssetsByIds([assetId]);
-            callback({ success: true, data: assets[0] || null });
-        } catch (error) {
-            logger.error(`Error fetching asset ${assetId}:`, error);
-            callback({ success: false, error: 'Failed to fetch asset' });
-        }
-    });
-
-    // Disconnect handler
-    socket.on('disconnect', () => {
-        logger.info(`Client disconnected: ${clientId}`);
-    });
 }
 
 /**
@@ -168,7 +203,11 @@ async function handleSubscribe(
 
         // Send initial data to client
         if (initialData.length > 0) {
+            logger.info(`Sending ${initialData.length} assets as initial data to ${clientId}`);
             socket.emit('initialData', initialData);
+        } else {
+            logger.info(`No initial data available for ${clientId}'s subscription`);
+            socket.emit('initialData', []);
         }
 
         // Confirm subscription
@@ -196,7 +235,7 @@ function handleUnsubscribe(
         categories?: string[],
         provider?: string,
         all?: boolean
-    }
+    } = {}
 ): void {
     const { assets, categories, provider, all } = params;
     const clientId = socket.id;
