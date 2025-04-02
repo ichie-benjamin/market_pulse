@@ -1,89 +1,133 @@
 import dotenv from 'dotenv';
-import path from 'path';
+import { AssetCategory } from './models';
 
 // Load environment variables from .env file
-dotenv.config({ path: path.join(process.cwd(), '.env') });
+dotenv.config();
 
-// Parse comma-separated values into arrays
-const parseArrayValue = (value: string | undefined, defaultValue: string[] = []): string[] => {
-    if (!value) return defaultValue;
-    return value.split(',').map(item => item.trim()).filter(Boolean);
-};
+export interface Config {
+    // Server configuration
+    port: number;
+    nodeEnv: string;
 
-// Provider connection method type
-export type ProviderConnectionMethod = 'websocket' | 'api';
+    // Logging configuration
+    logging: {
+        level: string;
+        format: string;
+        fileEnabled: boolean;
+        filePath: string;
+        maxSize: string;
+        maxFiles: number;
+        consoleEnabled: boolean;
+    };
 
-// Application config
-export const config = {
-    app: {
-        env: process.env.NODE_ENV || 'development',
-        port: parseInt(process.env.PORT || '3000', 10),
-        logLevel: process.env.LOG_LEVEL || 'info'
-    },
-
-    // Redis config
+    // Redis configuration
     redis: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379', 10),
-        password: process.env.REDIS_PASSWORD || undefined,
-        keyPrefix: 'market_data:',
-        dataTtl: parseInt(process.env.REDIS_DATA_TTL || '3600', 10),
-        // Redis channel names for pub/sub
-        channels: {
-            dataUpdates: 'market_data:updates'
-        }
-    },
+        url: string;
+        keyPrefix: string;
+        cacheExpiry: number;
+    };
 
-    // WebSocket config
-    websocket: {
-        port: parseInt(process.env.WS_PORT || '3000', 10),
-        path: process.env.WS_PATH || '/market-data'
-    },
+    // Authentication configuration
+    auth: {
+        enabled: boolean;
+        apiKeys: string[];
+    };
 
-    // Security config
-    security: {
-        apiKeys: parseArrayValue(process.env.API_KEYS, ['dev_test_key'])
-    },
+    // URL checking configuration
+    urlCheck: {
+        enabled: boolean;
+        allowedOrigins: string[];
+    };
 
-    // Provider config
+    // Provider configuration
     providers: {
-        // Active provider selection
-        activeProvider: process.env.ACTIVE_PROVIDER || 'financialmodelingprep',
+        [key in AssetCategory]: string;
+    };
 
-        // Connection method preference
-        connectionMethod: (process.env.PROVIDER_CONNECTION_METHOD || 'websocket') as ProviderConnectionMethod,
+    // Provider connection modes
+    connectionModes: {
+        [key: string]: string;
+    };
 
-        // CoinCap config
-        coincap: {
-            apiKey: process.env.COINCAP_API_KEY,
-            apiBaseUrl: 'https://api.coincap.io/v2',
-            wsUrl: process.env.COINCAP_WS_URL || 'wss://ws.coincap.io/prices?assets=ALL'
-        },
+    // Provider API keys
+    apiKeys: {
+        [key: string]: string | undefined;
+    };
 
-        // CoinGecko config
-        coingecko: {
-            apiKey: process.env.COINGECKO_API_KEY,
-            apiBaseUrl: 'https://api.coingecko.com/api/v3',
-            wsUrl: process.env.COINGECKO_WS_URL || 'wss://ws.coingecko.com/cryptocurrency'
-        },
-        
-        // Financial Modeling Prep config
-        financialmodelingprep: {
-            apiKey: process.env.FMP_API_KEY,
-            apiBaseUrl: 'https://financialmodelingprep.com',
-            cryptoWsUrl: process.env.FMP_CRYPTO_WS_URL || 'wss://crypto.financialmodelingprep.com',
-            forexWsUrl: process.env.FMP_FOREX_WS_URL || 'wss://forex.financialmodelingprep.com'
-        },
+    // Update intervals for API polling (in milliseconds)
+    updateIntervals: {
+        [key in AssetCategory]: number;
+    };
+}
 
-        // Alpaca config
-        // alpaca: {
-        //     apiKey: process.env.ALPACA_API_KEY,
-        //     apiSecret: process.env.ALPACA_API_SECRET,
-        //     apiBaseUrl: 'https://api.alpaca.markets/v2',
-        //     wsUrl: process.env.ALPACA_WS_URL || 'wss://stream.data.alpaca.markets/v2/iex'
-        // }
+export const config: Config = {
+    // Server configuration
+    port: parseInt(process.env.PORT || '3000', 10),
+    nodeEnv: process.env.NODE_ENV || 'development',
+
+    // Logging configuration
+    logging: {
+        level: process.env.LOG_LEVEL || 'info',
+        format: process.env.LOG_FORMAT || 'json',
+        fileEnabled: process.env.LOG_FILE_ENABLED === 'true',
+        filePath: process.env.LOG_FILE_PATH || './logs',
+        maxSize: process.env.LOG_MAX_SIZE || '10m',
+        maxFiles: parseInt(process.env.LOG_MAX_FILES || '7', 10),
+        consoleEnabled: process.env.LOG_CONSOLE_ENABLED === 'true'
     },
 
-    // Asset categories to track
-    assetCategories: parseArrayValue(process.env.ASSET_CATEGORIES, ['cryptocurrency', 'stock'])
+    // Redis configuration
+    redis: {
+        url: process.env.REDIS_URL || 'redis://localhost:6379',
+        keyPrefix: process.env.REDIS_KEY_PREFIX || 'market:',
+        cacheExpiry: parseInt(process.env.REDIS_CACHE_EXPIRY || '3600', 10), // 1 hour
+    },
+
+    // Authentication configuration
+    auth: {
+        enabled: process.env.API_AUTH_ENABLED === 'true',
+        apiKeys: (process.env.API_KEYS || '').split(',').filter(key => key.trim() !== '')
+    },
+
+    // URL checking configuration
+    urlCheck: {
+        enabled: process.env.URL_CHECK_ENABLED === 'true',
+        allowedOrigins: (process.env.ALLOWED_ORIGINS || '').split(',').filter(origin => origin.trim() !== '')
+    },
+
+    // Provider configuration
+    providers: {
+        crypto: process.env.CRYPTO_PROVIDER || 'financialmodelingprep',
+        stocks: process.env.STOCKS_PROVIDER || 'financialmodelingprep',
+        forex: process.env.FOREX_PROVIDER || 'financialmodelingprep',
+        indices: process.env.INDICES_PROVIDER || 'financialmodelingprep',
+        commodities: process.env.COMMODITIES_PROVIDER || 'financialmodelingprep'
+    },
+
+    // Provider connection modes
+    connectionModes: {
+        financialmodelingprep: process.env.FINANCIALMODELINGPREP_CONNECTION_MODE || 'api',
+        coincap: process.env.COINCAP_CONNECTION_MODE || 'ws',
+        alphavantage: process.env.ALPHAVANTAGE_CONNECTION_MODE || 'api',
+        fixer: process.env.FIXER_CONNECTION_MODE || 'api'
+    },
+
+    // Provider API keys
+    apiKeys: {
+        financialmodelingprep: process.env.FINANCIALMODELINGPREP_API_KEY,
+        coincap: process.env.COINCAP_API_KEY,
+        alphavantage: process.env.ALPHAVANTAGE_API_KEY,
+        fixer: process.env.FIXER_API_KEY
+    },
+
+    // Update intervals for API polling (in milliseconds)
+    updateIntervals: {
+        crypto: parseInt(process.env.CRYPTO_UPDATE_INTERVAL || '5000', 10),
+        stocks: parseInt(process.env.STOCKS_UPDATE_INTERVAL || '60000', 10),
+        forex: parseInt(process.env.FOREX_UPDATE_INTERVAL || '5000', 10),
+        indices: parseInt(process.env.INDICES_UPDATE_INTERVAL || '60000', 10),
+        commodities: parseInt(process.env.COMMODITIES_UPDATE_INTERVAL || '60000', 10)
+    }
 };
+
+export default config;
