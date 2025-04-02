@@ -1,12 +1,13 @@
-import { Socket } from 'socket.io';
-import { createLogger, Logger } from '../logging';
-import { config } from '../config';
-import { RedisService } from '../redis';
-import { Asset, AssetCategory } from '../models';
-import { BaseProvider, ErrorResponse } from './base';
+import {Socket} from 'socket.io';
+import {createLogger, Logger} from '../logging';
+import {config} from '../config';
+import {RedisService} from '../redis';
+import {Asset, AssetCategory} from '../models';
+import {BaseProvider} from './base';
 
 // Import provider implementations
 import FinancialModelingPrepProvider from './financialmodelingprep';
+import CexioProvider from './cexio';
 
 const logger: Logger = createLogger('provider-manager');
 
@@ -40,8 +41,10 @@ class ProviderManager {
             this.providers = {};
             this.categoryProviders = {};
 
-            // Initialize the FMP provider (or potentially other providers)
+            // Initialize the providers based on configuration
             await this.initializeProvider('financialmodelingprep');
+            await this.initializeProvider('cexio');
+            // Add other providers as needed
 
             // Map providers to categories
             this.mapProvidersToCategories();
@@ -52,6 +55,7 @@ class ProviderManager {
             }
 
             logger.info('All categories initialized successfully');
+
             return true;
         } catch (error) {
             logger.error('Failed to initialize provider manager', { error });
@@ -71,6 +75,17 @@ class ProviderManager {
                 case 'financialmodelingprep':
                     provider = new FinancialModelingPrepProvider(config.apiKeys.financialmodelingprep);
                     break;
+                case 'cexio':
+                    provider = new CexioProvider(config.apiKeys.cexio);
+
+                    const cexioProvider = provider;
+
+                    cexioProvider.addEventListener('data', (assets: Asset[]) => {
+                        this.handleWebSocketData(cexioProvider, assets);
+                    });
+
+                    break;
+
                 // Add other providers here as they're implemented
                 default:
                     logger.error(`Unknown provider: ${providerName}`);
@@ -95,6 +110,33 @@ class ProviderManager {
         } catch (error) {
             logger.error(`Failed to initialize provider: ${providerName}`, { error });
             return null;
+        }
+    }
+
+    /**
+     * New method to handle WebSocket data
+     * Processes data from WebSocket providers and updates Redis
+     */
+    async handleWebSocketData(provider: BaseProvider, assets: Asset[]): Promise<void> {
+        try {
+            // Update Redis with the new assets
+            await this.redis.updateAssets(assets);
+
+            // Directly stream to Turbo Mode subscribers
+            this.streamToTurboSubscribers(assets);
+
+            // Log periodic statistics (once every 100 updates)
+            if (Math.random() < 0.01) {
+                logger.info('WebSocket data processed', {
+                    provider: provider.name,
+                    assetCount: assets.length
+                });
+            }
+        } catch (error) {
+            logger.error('Error handling WebSocket data', {
+                error,
+                provider: provider.name
+            });
         }
     }
 
@@ -167,58 +209,8 @@ class ProviderManager {
             });
 
             // Connect to provider's WebSocket
-            const connection = await provider.connectWebSocket();
-
-            // Setup reconnection logic
-            connection.on('disconnect', async (reason: string) => {
-                logger.warn(`WebSocket disconnected: ${reason}`, {
-                    provider: provider.name
-                });
-
-                // Attempt to reconnect
-                setTimeout(async () => {
-                    logger.info('Attempting to reconnect WebSocket', {
-                        provider: provider.name,
-                        retryCount: provider.retryCount
-                    });
-
-                    provider.retryCount++;
-                    await this.setupWebSocketConnection(provider);
-                }, provider.retryDelay);
-            });
-
-            // Setup data handler
-            connection.on('data', async (data: any) => {
-                try {
-                    // Transform data to standard format
-                    const assets = provider.transform(data);
-
-                    if (assets && assets.length > 0) {
-                        // Update Redis
-                        await this.redis.updateAssets(assets);
-
-                        // Directly stream to Turbo Mode subscribers
-                        this.streamToTurboSubscribers(assets);
-
-                        // Log periodic statistics (once every 100 updates)
-                        if (Math.random() < 0.01) {
-                            logger.info('WebSocket data received', {
-                                provider: provider.name,
-                                assetCount: assets.length
-                            });
-                        }
-                    }
-                } catch (error) {
-                    logger.error('Error processing WebSocket data', {
-                        error,
-                        provider: provider.name
-                    });
-                }
-            });
-
             // Store connection
-            provider.connection = connection;
-            provider.retryCount = 0;
+            provider.connection = await provider.connectWebSocket();
 
             logger.info('WebSocket connection established', {
                 provider: provider.name
@@ -226,27 +218,8 @@ class ProviderManager {
         } catch (error) {
             logger.error('Failed to setup WebSocket connection', {
                 error,
-                provider: provider.name,
-                retryCount: provider.retryCount
+                provider: provider.name
             });
-
-            // Retry with exponential backoff if under max retries
-            if (provider.retryCount < provider.maxRetries) {
-                const delay = provider.retryDelay * Math.pow(1.5, provider.retryCount);
-
-                logger.info(`Retrying WebSocket connection in ${delay}ms`, {
-                    provider: provider.name,
-                    retryCount: provider.retryCount
-                });
-
-                provider.retryCount++;
-                setTimeout(() => this.setupWebSocketConnection(provider), delay);
-            } else {
-                logger.error('Max WebSocket reconnection attempts reached', {
-                    provider: provider.name,
-                    maxRetries: provider.maxRetries
-                });
-            }
         }
     }
 
@@ -267,12 +240,10 @@ class ProviderManager {
             await this.fetchAndUpdateFromApi(provider, category);
 
             // Setup interval for regular polling
-            const timerId = setInterval(async () => {
+            // Store interval in provider
+            provider.pollingInterval = setInterval(async () => {
                 await this.fetchAndUpdateFromApi(provider, category);
             }, interval);
-
-            // Store interval in provider
-            provider.pollingInterval = timerId;
 
             logger.info('API polling setup completed', {
                 provider: provider.name,
@@ -302,7 +273,7 @@ class ProviderManager {
             const result = await provider.getAssetsByCategory(category);
 
             // Handle error response
-            if ('success' in result && result.success === false) {
+            if ('success' in result && !result.success) {
                 logger.error('Error fetching data from API', {
                     provider: provider.name,
                     category,

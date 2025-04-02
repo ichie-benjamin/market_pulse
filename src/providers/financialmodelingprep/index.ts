@@ -2,7 +2,9 @@ import axios, { AxiosResponse } from 'axios';
 import CircuitBreaker from 'opossum';
 import { BaseProvider, ErrorResponse } from '../base';
 import { createAsset, validateAsset, Asset, AssetCategory, AssetAdditionalData } from '../../models';
-import { SUPPORTED_CATEGORIES, ALLOWED_ASSETS, API_ENDPOINTS, getAllAllowedAssets } from './constants';
+import { SUPPORTED_CATEGORIES,  API_ENDPOINTS } from './constants';
+
+import { ALLOWED_ASSETS, getAllAllowedAssets } from '../../constants';
 
 // FMP API response interfaces
 interface FMPQuote {
@@ -129,6 +131,7 @@ class FinancialModelingPrepProvider extends BaseProvider {
     /**
      * Fetch all allowed assets across supported categories
      */
+
     async getAllAssets(): Promise<Asset[] | ErrorResponse> {
         try {
             const allowedAssets = getAllAllowedAssets();
@@ -139,7 +142,7 @@ class FinancialModelingPrepProvider extends BaseProvider {
             }
 
             // Split into chunks of 20 symbols to avoid URL length limitations
-            const chunkSize = 20;
+            const chunkSize = 100;
             const chunks = [];
 
             for (let i = 0; i < allowedAssets.length; i += chunkSize) {
@@ -160,7 +163,7 @@ class FinancialModelingPrepProvider extends BaseProvider {
                 }
 
                 const quotes: FMPQuote[] | FMPQuote = response;
-                const quotesArray = Array.isArray(quotes) ? quotes : [quotes];
+                const quotesArray: FMPQuote[] = Array.isArray(quotes) ? quotes : [quotes];
 
                 allQuotes = [...allQuotes, ...quotesArray];
             }
@@ -199,49 +202,29 @@ class FinancialModelingPrepProvider extends BaseProvider {
                 return [];
             }
 
-            // Get category endpoint
-            let endpoint: string;
+            // Create comma-separated list of symbols
+            const symbolsParam = allowedAssets.join(',');
 
-            switch (category) {
-                case 'crypto':
-                    endpoint = API_ENDPOINTS.cryptoQuote;
-                    break;
-                case 'stocks':
-                    endpoint = API_ENDPOINTS.stocksQuote;
-                    break;
-                case 'forex':
-                    endpoint = API_ENDPOINTS.forexQuote;
-                    break;
-                case 'indices':
-                    endpoint = API_ENDPOINTS.indicesQuote;
-                    break;
-                case 'commodities':
-                    endpoint = API_ENDPOINTS.commoditiesQuote;
-                    break;
-                default:
-                    throw new Error(`Unsupported category: ${category}`);
-            }
+            // Use the quote endpoint directly with all symbols
+            const endpoint = `${API_ENDPOINTS.quote}${symbolsParam}`;
 
             const response = await this.circuitBreaker.fire(endpoint);
 
-            if (!response || !Array.isArray(response)) {
+            if (!response) {
                 return [];
             }
 
-            // Filter to only include allowed assets
-            const allowedSymbols = new Set(allowedAssets);
-            const filteredQuotes = response.filter(
-                (quote: FMPQuote) => quote.symbol && allowedSymbols.has(quote.symbol)
-            );
+            const quotes: FMPQuote[] | FMPQuote = response;
+            const quotesArray = Array.isArray(quotes) ? quotes : [quotes];
 
             this.logger.info(`Fetched ${category} assets from FMP`, {
                 category,
-                receivedCount: response.length,
-                filteredCount: filteredQuotes.length
+                requestedCount: allowedAssets.length,
+                receivedCount: quotesArray.length
             });
 
-            // Transform to standard format
-            const assets = this.transform(filteredQuotes, category);
+            // Transform to standard format with the specific category
+            const assets = this.transform(quotesArray, category);
 
             return assets;
         } catch (error) {

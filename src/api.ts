@@ -6,7 +6,12 @@ import { RedisService } from './redis';
 import ProviderManager from './providers';
 import {setupApiRoutes} from "./api/index";
 
+// import { setupSwagger } from './swagger';
+
+
 const logger = createLogger('api');
+
+
 
 /**
  * Set up Express app with API routes
@@ -33,6 +38,8 @@ export function setupApi(
     setupApiRoutes(app, redisService, providerManager);
 
     logger.info('Express application setup completed');
+
+    // setupSwagger(app);
 
     return app;
 }

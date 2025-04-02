@@ -97,7 +97,7 @@ export const config: Config = {
 
     // Provider configuration
     providers: {
-        crypto: process.env.CRYPTO_PROVIDER || 'financialmodelingprep',
+        crypto: process.env.CRYPTO_PROVIDER || 'cexio', // Default to CEX.IO for crypto
         stocks: process.env.STOCKS_PROVIDER || 'financialmodelingprep',
         forex: process.env.FOREX_PROVIDER || 'financialmodelingprep',
         indices: process.env.INDICES_PROVIDER || 'financialmodelingprep',
@@ -107,6 +107,7 @@ export const config: Config = {
     // Provider connection modes
     connectionModes: {
         financialmodelingprep: process.env.FINANCIALMODELINGPREP_CONNECTION_MODE || 'api',
+        cexio: 'ws', // CEX.IO always uses WebSocket
         coincap: process.env.COINCAP_CONNECTION_MODE || 'ws',
         alphavantage: process.env.ALPHAVANTAGE_CONNECTION_MODE || 'api',
         fixer: process.env.FIXER_CONNECTION_MODE || 'api'
@@ -115,6 +116,7 @@ export const config: Config = {
     // Provider API keys
     apiKeys: {
         financialmodelingprep: process.env.FINANCIALMODELINGPREP_API_KEY,
+        cexio: process.env.CEXIO_API_KEY,
         coincap: process.env.COINCAP_API_KEY,
         alphavantage: process.env.ALPHAVANTAGE_API_KEY,
         fixer: process.env.FIXER_API_KEY

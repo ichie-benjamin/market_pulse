@@ -32,6 +32,35 @@ export abstract class BaseProvider {
     public initialized: boolean;
     protected logger: Logger;
 
+
+
+    /**
+     * Event handlers for WebSocket providers
+     * This is used to register callbacks for WebSocket events
+     */
+    protected eventHandlers: Array<{ event: string, callback: (data: any) => void }> = [];
+
+    /**
+     * Register an event handler
+     * This is particularly useful for WebSocket providers to handle events
+     * @param event - Event name
+     * @param callback - Event handler callback
+     */
+    public addEventListener(event: string, callback: (data: any) => void): void {
+        this.eventHandlers.push({ event, callback });
+    }
+
+    /**
+     * Get registered event handlers for a specific event
+     * @param event - Event name
+     * @returns Array of event handler callbacks
+     */
+    public getEventHandlers(event: string): ((data: any) => void)[] {
+        return this.eventHandlers
+            .filter(handler => handler.event === event)
+            .map(handler => handler.callback);
+    }
+
     /**
      * Create a new provider instance
      * @param name - Provider name
