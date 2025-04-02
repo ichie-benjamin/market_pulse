@@ -1,17 +1,13 @@
-import express from 'express';
 import http from 'http';
-import cors from 'cors';
-import helmet from 'helmet';
 import { Server as SocketIOServer } from 'socket.io';
 import { logger } from './logging';
-import { setupApiRoutes } from './api';
+import { setupApi } from './api';
 import { setupWebSocketServer } from './websocket';
 import { initRedisService, RedisService } from './redis';
 import ProviderManager from './providers';
 import { config } from './config';
 
 interface AppComponents {
-    app: express.Application;
     server: http.Server;
     io: SocketIOServer;
     redisService: RedisService;
@@ -30,26 +26,19 @@ async function startServer(): Promise<AppComponents> {
         const redisService = await initRedisService();
         logger.info('Redis service initialized successfully');
 
-        // Create Express app
-        const app = express();
-
-        // Apply middleware
-        app.use(helmet());
-        app.use(cors());
-        app.use(express.json());
-
-        // Create HTTP server
-        const server = http.createServer(app);
-
         // Initialize provider manager
         logger.info('Initializing provider manager...');
         const providerManager = new ProviderManager(redisService);
         await providerManager.initialize();
         logger.info('Provider manager initialized successfully');
 
-        // Set up API routes
-        logger.info('Setting up API routes...');
-        setupApiRoutes(app, redisService, providerManager);
+        // Set up Express app with API routes
+        logger.info('Setting up API...');
+        const app = setupApi(redisService, providerManager);
+
+        // Create HTTP server
+        const server = http.createServer(app);
+
 
         // Set up WebSocket server
         logger.info('Setting up WebSocket server...');
@@ -67,7 +56,7 @@ async function startServer(): Promise<AppComponents> {
         process.on('SIGTERM', () => gracefulShutdown(server, redisService, providerManager));
         process.on('SIGINT', () => gracefulShutdown(server, redisService, providerManager));
 
-        return { app, server, io, redisService, providerManager };
+        return { server, io, redisService, providerManager };
     } catch (error) {
         logger.error('Failed to start server', { error });
         process.exit(1);

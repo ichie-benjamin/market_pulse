@@ -1,7 +1,7 @@
 import Redis from 'ioredis';
 import { config } from './config';
 import { createLogger, Logger } from './logging';
-import { Asset } from './models';
+import { Asset, AssetCategory } from './models';
 
 const logger: Logger = createLogger('redis-service');
 
@@ -28,6 +28,15 @@ export interface RedisService {
     getAllAssets: () => Promise<Asset[]>;
     subscribe: (callback: (message: UpdateMessage) => void) => void;
     publishAssetUpdate: (assetIds: string[]) => Promise<void>;
+
+    // New Redis management methods
+    clearAll: () => Promise<void>;
+    clearCategory: (category: AssetCategory) => Promise<void>;
+    clearAsset: (id: string) => Promise<void>;
+    clearSymbol: (symbol: string) => Promise<void>;
+    clearPattern: (pattern: string) => Promise<void>;
+    getInfo: () => Promise<any>;
+
     shutdown: () => Promise<void>;
 }
 
@@ -79,6 +88,12 @@ export async function initRedisService(): Promise<RedisService> {
             getAllAssets,
             subscribe,
             publishAssetUpdate,
+            clearAll,
+            clearCategory,
+            clearAsset,
+            clearSymbol,
+            clearPattern,
+            getInfo,
             shutdown
         };
     } catch (error) {
@@ -322,6 +337,265 @@ async function publishAssetUpdate(assetIds: string[]): Promise<void> {
         logger.debug('Published asset update notification', { assetCount: assetIds.length });
     } catch (error) {
         logger.error('Failed to publish asset update', { error, assetIds });
+        throw error;
+    }
+}
+
+/**
+ * Clear all data from Redis
+ */
+async function clearAll(): Promise<void> {
+    try {
+        logger.info('Clearing all market data from Redis');
+
+        // Get all keys with the configured prefix
+        const keys = await redisClient!.keys(`${config.redis.keyPrefix}*`);
+
+        if (keys.length === 0) {
+            logger.info('No keys found to clear');
+            return;
+        }
+
+        // Delete all keys in batches to avoid blocking Redis
+        const batchSize = 1000;
+        for (let i = 0; i < keys.length; i += batchSize) {
+            const batch = keys.slice(i, i + batchSize);
+            await redisClient!.del(...batch);
+        }
+
+        logger.info('Cleared all market data from Redis', { keyCount: keys.length });
+
+        // Publish a clear event
+        await redisPublisher!.publish('asset-updates', JSON.stringify({
+            type: 'clear',
+            assets: [],
+            timestamp: new Date().toISOString()
+        }));
+    } catch (error) {
+        logger.error('Failed to clear all data from Redis', { error });
+        throw error;
+    }
+}
+
+/**
+ * Clear data for a specific category
+ */
+async function clearCategory(category: AssetCategory): Promise<void> {
+    try {
+        logger.info('Clearing category data from Redis', { category });
+
+        // Get all asset IDs in the category
+        const categoryKey = `${config.redis.keyPrefix}category:${category}`;
+        const assetIds = await redisClient!.smembers(categoryKey);
+
+        if (assetIds.length === 0) {
+            logger.info('No assets found for category', { category });
+            return;
+        }
+
+        // Delete all asset keys
+        const pipeline = redisClient!.pipeline();
+        assetIds.forEach(id => {
+            pipeline.del(`${config.redis.keyPrefix}asset:${id}`);
+        });
+
+        // Delete the category set
+        pipeline.del(categoryKey);
+
+        await pipeline.exec();
+
+        logger.info('Cleared category data from Redis', { category, assetCount: assetIds.length });
+
+        // Publish a clear event for the category
+        await redisPublisher!.publish('asset-updates', JSON.stringify({
+            type: 'clear-category',
+            category,
+            assets: assetIds,
+            timestamp: new Date().toISOString()
+        }));
+    } catch (error) {
+        logger.error('Failed to clear category data from Redis', { error, category });
+        throw error;
+    }
+}
+
+/**
+ * Clear a specific asset by ID
+ */
+async function clearAsset(id: string): Promise<void> {
+    try {
+        logger.info('Clearing asset from Redis', { id });
+
+        // Get the asset first to find its symbol
+        const asset = await getAsset(id);
+
+        if (!asset) {
+            logger.info('Asset not found, nothing to clear', { id });
+            return;
+        }
+
+        const pipeline = redisClient!.pipeline();
+
+        // Delete the asset
+        pipeline.del(`${config.redis.keyPrefix}asset:${id}`);
+
+        // Remove from category set
+        if (asset.category) {
+            pipeline.srem(`${config.redis.keyPrefix}category:${asset.category}`, id);
+        }
+
+        // Remove from symbol mapping
+        if (asset.symbol) {
+            pipeline.hdel(`${config.redis.keyPrefix}symbols`, asset.symbol);
+        }
+
+        await pipeline.exec();
+
+        logger.info('Cleared asset from Redis', { id, symbol: asset.symbol });
+
+        // Publish a clear event for the asset
+        await redisPublisher!.publish('asset-updates', JSON.stringify({
+            type: 'clear-asset',
+            assets: [id],
+            timestamp: new Date().toISOString()
+        }));
+    } catch (error) {
+        logger.error('Failed to clear asset from Redis', { error, id });
+        throw error;
+    }
+}
+
+/**
+ * Clear asset by symbol
+ */
+async function clearSymbol(symbol: string): Promise<void> {
+    try {
+        logger.info('Clearing asset by symbol from Redis', { symbol });
+
+        // Get the asset ID from symbol
+        const id = await redisClient!.hget(`${config.redis.keyPrefix}symbols`, symbol);
+
+        if (!id) {
+            logger.info('Symbol not found, nothing to clear', { symbol });
+            return;
+        }
+
+        // Clear the asset using the ID
+        await clearAsset(id);
+    } catch (error) {
+        logger.error('Failed to clear asset by symbol from Redis', { error, symbol });
+        throw error;
+    }
+}
+
+/**
+ * Clear keys matching a pattern
+ */
+async function clearPattern(pattern: string): Promise<void> {
+    try {
+        logger.info('Clearing keys matching pattern from Redis', { pattern });
+
+        // Get all keys matching the pattern
+        const fullPattern = `${config.redis.keyPrefix}${pattern}`;
+        const keys = await redisClient!.keys(fullPattern);
+
+        if (keys.length === 0) {
+            logger.info('No keys found matching pattern', { pattern });
+            return;
+        }
+
+        // Delete all keys in batches to avoid blocking Redis
+        const batchSize = 1000;
+        for (let i = 0; i < keys.length; i += batchSize) {
+            const batch = keys.slice(i, i + batchSize);
+            await redisClient!.del(...batch);
+        }
+
+        logger.info('Cleared keys matching pattern from Redis', { pattern, keyCount: keys.length });
+    } catch (error) {
+        logger.error('Failed to clear keys matching pattern from Redis', { error, pattern });
+        throw error;
+    }
+}
+
+/**
+ * Get Redis info and statistics
+ */
+async function getInfo(): Promise<any> {
+    try {
+        // Get Redis info command results
+        const info = await redisClient!.info();
+
+        // Get key counts and memory usage
+        const keyCountPromises = ['crypto', 'stocks', 'forex', 'indices', 'commodities'].map(
+            async category => {
+                const count = await redisClient!.scard(`${config.redis.keyPrefix}category:${category}`);
+                return { category, count: parseInt(count.toString(), 10) };
+            }
+        );
+
+        const categories = await Promise.all(keyCountPromises);
+        const totalKeys = await redisClient!.dbsize();
+
+        // Get memory usage of key patterns
+        const memoryUsagePromises = [
+            { name: 'assets', pattern: `${config.redis.keyPrefix}asset:*` },
+            { name: 'categories', pattern: `${config.redis.keyPrefix}category:*` },
+            { name: 'symbols', pattern: `${config.redis.keyPrefix}symbols` }
+        ].map(async ({ name, pattern }) => {
+            const keys = await redisClient!.keys(pattern);
+            let totalBytes = 0;
+
+            if (keys.length > 0) {
+                // Sample up to 100 keys to estimate memory usage
+                const sampleKeys = keys.length <= 100 ? keys : keys.slice(0, 100);
+
+                // Use MEMORY USAGE command directly since memoryUsage() isn't in type definitions
+                const samples = await Promise.all(
+                    sampleKeys.map(key => redisClient!.call('MEMORY', 'USAGE', key) as Promise<number>)
+                );
+
+                const averageSize = samples.reduce((sum: number, size) => sum + (size || 0), 0) / samples.length;
+                totalBytes = averageSize * keys.length;
+            }
+
+            return {
+                name,
+                keyCount: keys.length,
+                estimatedMemoryBytes: totalBytes,
+                estimatedMemoryMB: (totalBytes / (1024 * 1024)).toFixed(2)
+            };
+        });
+
+        const memoryUsage = await Promise.all(memoryUsagePromises);
+
+        // Parse Redis info string to object
+        const infoObject: Record<string, any> = {};
+        info.split('\r\n').forEach(line => {
+            if (line.includes(':')) {
+                const [key, value] = line.split(':');
+                infoObject[key] = value;
+            }
+        });
+
+        return {
+            redis: {
+                version: infoObject.redis_version,
+                uptime: infoObject.uptime_in_seconds,
+                connectedClients: infoObject.connected_clients,
+                usedMemory: infoObject.used_memory_human,
+                totalKeys
+            },
+            marketData: {
+                categories,
+                memoryUsage,
+                totalAssets: categories.reduce((sum, cat) => sum + cat.count, 0),
+                prefix: config.redis.keyPrefix,
+                expiry: config.redis.cacheExpiry
+            }
+        };
+    } catch (error) {
+        logger.error('Failed to get Redis info', { error });
         throw error;
     }
 }

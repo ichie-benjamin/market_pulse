@@ -1,8 +1,9 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import { createLogger, Logger } from './logging';
+
 import { socketAuth, socketOriginCheck } from './api/middleware/auth';
-import { generateAssetStats, Asset, AssetCategory } from './models';
+import { generateAssetStats, Asset } from './models';
 import { RedisService, UpdateMessage } from './redis';
 import ProviderManager from './providers';
 

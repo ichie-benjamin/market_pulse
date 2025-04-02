@@ -3,11 +3,10 @@ import { createLogger, Logger } from '../logging';
 import { config } from '../config';
 import { RedisService } from '../redis';
 import { Asset, AssetCategory } from '../models';
-import { BaseProvider, ErrorResponse } from './provider';
+import { BaseProvider, ErrorResponse } from './base';
 
 // Import provider implementations
-import FinancialModelingPrepCryptoProvider from './crypto/financialmodelingprep';
-import FinancialModelingPrepStocksProvider from './stocks/financialmodelingprep';
+import FinancialModelingPrepProvider from './financialmodelingprep';
 
 const logger: Logger = createLogger('provider-manager');
 
@@ -17,13 +16,15 @@ export interface ProviderMap {
 
 class ProviderManager {
     private redis: RedisService;
-    private providers: ProviderMap;
+    private providers: Record<string, BaseProvider>; // By provider name
+    private categoryProviders: ProviderMap; // By category
     private directStreamSubscribers: Map<string, Set<Socket>>;
     private categories: AssetCategory[];
 
     constructor(redisService: RedisService) {
         this.redis = redisService;
         this.providers = {};
+        this.categoryProviders = {};
         this.directStreamSubscribers = new Map(); // For Turbo Mode
         this.categories = ['crypto', 'stocks', 'forex', 'indices', 'commodities'];
     }
@@ -35,12 +36,22 @@ class ProviderManager {
         logger.info('Initializing provider manager');
 
         try {
-            // Initialize providers for each category
+            // Clear any existing providers
+            this.providers = {};
+            this.categoryProviders = {};
+
+            // Initialize the FMP provider (or potentially other providers)
+            await this.initializeProvider('financialmodelingprep');
+
+            // Map providers to categories
+            this.mapProvidersToCategories();
+
+            // Initialize each category
             for (const category of this.categories) {
-                await this.initializeProviderForCategory(category);
+                await this.initializeCategory(category);
             }
 
-            logger.info('All providers initialized successfully');
+            logger.info('All categories initialized successfully');
             return true;
         } catch (error) {
             logger.error('Failed to initialize provider manager', { error });
@@ -49,85 +60,100 @@ class ProviderManager {
     }
 
     /**
-     * Initialize provider for a specific category
+     * Initialize a specific provider
      */
-    async initializeProviderForCategory(category: AssetCategory): Promise<void> {
+    async initializeProvider(providerName: string): Promise<BaseProvider | null> {
         try {
-            const providerName = config.providers[category];
+            let provider: BaseProvider | null = null;
 
-            if (!providerName) {
-                logger.warn(`No provider configured for category: ${category}`);
-                return;
+            // Create provider instance based on name
+            switch (providerName) {
+                case 'financialmodelingprep':
+                    provider = new FinancialModelingPrepProvider(config.apiKeys.financialmodelingprep);
+                    break;
+                // Add other providers here as they're implemented
+                default:
+                    logger.error(`Unknown provider: ${providerName}`);
+                    return null;
             }
-
-            // Create provider instance
-            const provider = this.createProvider(category, providerName);
 
             if (!provider) {
-                logger.error(`Failed to create provider for category: ${category}`);
-                return;
+                return null;
             }
 
-            // Initialize provider
+            // Initialize the provider
             await provider.initialize();
 
-            // Setup connection based on mode
-            const connectionMode = config.connectionModes[providerName];
+            // Store the provider
+            this.providers[providerName] = provider;
 
-            if (connectionMode === 'ws') {
-                await this.setupWebSocketConnection(provider);
-            } else {
-                await this.setupApiPolling(provider);
-            }
-
-            // Store provider
-            this.providers[category] = provider;
-            logger.info(`Provider initialized for category: ${category}`, {
-                provider: providerName,
-                mode: connectionMode
+            logger.info(`Provider ${providerName} initialized successfully`, {
+                supportedCategories: provider.supportedCategories
             });
+
+            return provider;
         } catch (error) {
-            logger.error(`Failed to initialize provider for category: ${category}`, { error });
-            throw error;
+            logger.error(`Failed to initialize provider: ${providerName}`, { error });
+            return null;
         }
     }
 
     /**
-     * Create a provider instance based on name and category
+     * Map providers to categories based on what they support
      */
-    createProvider(category: AssetCategory, providerName: string): BaseProvider | null {
-        try {
-            // For Financial Modeling Prep, we have category-specific implementations
-            if (providerName === 'financialmodelingprep') {
-                switch (category) {
-                    case 'crypto':
-                        return new FinancialModelingPrepCryptoProvider(
-                            category,
-                            config.apiKeys.financialmodelingprep
-                        );
+    mapProvidersToCategories(): void {
+        // Reset category mapping
+        this.categoryProviders = {};
 
-                    case 'stocks':
-                        return new FinancialModelingPrepStocksProvider(
-                            config.apiKeys.financialmodelingprep
-                        );
-
-                    default:
-                        // For other categories, use the crypto provider as a fallback
-                        logger.warn(`No specific FMP provider for category: ${category}, using crypto provider`);
-                        return new FinancialModelingPrepCryptoProvider(
-                            category,
-                            config.apiKeys.financialmodelingprep
-                        );
+        // For each provider, check which categories it supports
+        Object.values(this.providers).forEach(provider => {
+            // Get provider's supported categories
+            provider.supportedCategories.forEach(category => {
+                // Map category to provider based on configuration
+                const configuredProvider = config.providers[category];
+                if (configuredProvider === provider.name) {
+                    this.categoryProviders[category] = provider;
+                    logger.info(`Mapped category ${category} to provider ${provider.name}`);
                 }
+            });
+        });
+
+        // Log categories without assigned providers
+        this.categories.forEach(category => {
+            if (!this.categoryProviders[category]) {
+                logger.warn(`No provider assigned for category: ${category}`);
+            }
+        });
+    }
+
+    /**
+     * Initialize data for a specific category
+     */
+    async initializeCategory(category: AssetCategory): Promise<void> {
+        try {
+            const provider = this.categoryProviders[category];
+
+            if (!provider) {
+                logger.warn(`No provider configured for category: ${category}`);
+                return;
             }
 
-            // Add more provider implementations as needed
+            // Setup connection based on mode
+            const connectionMode = config.connectionModes[provider.name];
 
-            logger.error(`Unknown provider: ${providerName}`);
-            return null;
+            if (connectionMode === 'ws') {
+                await this.setupWebSocketConnection(provider);
+            } else {
+                await this.setupApiPolling(provider, category);
+            }
+
+            logger.info(`Category initialized: ${category}`, {
+                provider: provider.name,
+                mode: connectionMode
+            });
         } catch (error) {
-            logger.error(`Error creating provider: ${providerName}`, { error, category });
-            return null;
+            logger.error(`Failed to initialize category: ${category}`, { error });
+            throw error;
         }
     }
 
@@ -137,8 +163,7 @@ class ProviderManager {
     async setupWebSocketConnection(provider: BaseProvider): Promise<void> {
         try {
             logger.info('Setting up WebSocket connection', {
-                provider: provider.name,
-                category: provider.category
+                provider: provider.name
             });
 
             // Connect to provider's WebSocket
@@ -147,15 +172,13 @@ class ProviderManager {
             // Setup reconnection logic
             connection.on('disconnect', async (reason: string) => {
                 logger.warn(`WebSocket disconnected: ${reason}`, {
-                    provider: provider.name,
-                    category: provider.category
+                    provider: provider.name
                 });
 
                 // Attempt to reconnect
                 setTimeout(async () => {
                     logger.info('Attempting to reconnect WebSocket', {
                         provider: provider.name,
-                        category: provider.category,
                         retryCount: provider.retryCount
                     });
 
@@ -181,7 +204,6 @@ class ProviderManager {
                         if (Math.random() < 0.01) {
                             logger.info('WebSocket data received', {
                                 provider: provider.name,
-                                category: provider.category,
                                 assetCount: assets.length
                             });
                         }
@@ -189,8 +211,7 @@ class ProviderManager {
                 } catch (error) {
                     logger.error('Error processing WebSocket data', {
                         error,
-                        provider: provider.name,
-                        category: provider.category
+                        provider: provider.name
                     });
                 }
             });
@@ -200,14 +221,12 @@ class ProviderManager {
             provider.retryCount = 0;
 
             logger.info('WebSocket connection established', {
-                provider: provider.name,
-                category: provider.category
+                provider: provider.name
             });
         } catch (error) {
             logger.error('Failed to setup WebSocket connection', {
                 error,
                 provider: provider.name,
-                category: provider.category,
                 retryCount: provider.retryCount
             });
 
@@ -217,7 +236,6 @@ class ProviderManager {
 
                 logger.info(`Retrying WebSocket connection in ${delay}ms`, {
                     provider: provider.name,
-                    category: provider.category,
                     retryCount: provider.retryCount
                 });
 
@@ -226,7 +244,6 @@ class ProviderManager {
             } else {
                 logger.error('Max WebSocket reconnection attempts reached', {
                     provider: provider.name,
-                    category: provider.category,
                     maxRetries: provider.maxRetries
                 });
             }
@@ -234,39 +251,39 @@ class ProviderManager {
     }
 
     /**
-     * Setup API polling for a provider
+     * Setup API polling for a provider and category
      */
-    async setupApiPolling(provider: BaseProvider): Promise<void> {
+    async setupApiPolling(provider: BaseProvider, category: AssetCategory): Promise<void> {
         try {
-            const interval = config.updateIntervals[provider.category];
+            const interval = config.updateIntervals[category];
 
             logger.info('Setting up API polling', {
                 provider: provider.name,
-                category: provider.category,
+                category,
                 interval
             });
 
             // Immediate first fetch
-            await this.fetchAndUpdateFromApi(provider);
+            await this.fetchAndUpdateFromApi(provider, category);
 
             // Setup interval for regular polling
             const timerId = setInterval(async () => {
-                await this.fetchAndUpdateFromApi(provider);
+                await this.fetchAndUpdateFromApi(provider, category);
             }, interval);
 
-            // Store interval
+            // Store interval in provider
             provider.pollingInterval = timerId;
 
             logger.info('API polling setup completed', {
                 provider: provider.name,
-                category: provider.category,
+                category,
                 interval
             });
         } catch (error) {
             logger.error('Failed to setup API polling', {
                 error,
                 provider: provider.name,
-                category: provider.category
+                category
             });
         }
     }
@@ -274,21 +291,21 @@ class ProviderManager {
     /**
      * Fetch data from API and update Redis
      */
-    async fetchAndUpdateFromApi(provider: BaseProvider): Promise<boolean> {
+    async fetchAndUpdateFromApi(provider: BaseProvider, category: AssetCategory): Promise<boolean> {
         try {
             logger.debug('Fetching data from API', {
                 provider: provider.name,
-                category: provider.category
+                category
             });
 
-            // Fetch data
-            const result = await provider.fetchAssets();
+            // Fetch data for category
+            const result = await provider.getAssetsByCategory(category);
 
             // Handle error response
             if ('success' in result && result.success === false) {
                 logger.error('Error fetching data from API', {
                     provider: provider.name,
-                    category: provider.category,
+                    category,
                     error: result.error
                 });
                 return false;
@@ -299,7 +316,7 @@ class ProviderManager {
             if (assets.length === 0) {
                 logger.warn('No assets returned from API', {
                     provider: provider.name,
-                    category: provider.category
+                    category
                 });
                 return false;
             }
@@ -309,7 +326,7 @@ class ProviderManager {
 
             logger.info('API data fetched and stored', {
                 provider: provider.name,
-                category: provider.category,
+                category,
                 assetCount: assets.length
             });
 
@@ -318,7 +335,7 @@ class ProviderManager {
             logger.error('Error in API fetch and update cycle', {
                 error,
                 provider: provider.name,
-                category: provider.category
+                category
             });
             return false;
         }
@@ -388,21 +405,21 @@ class ProviderManager {
      * Get provider for a category
      */
     getProvider(category: string): BaseProvider | undefined {
-        return this.providers[category];
+        return this.categoryProviders[category];
     }
 
     /**
-     * Get all providers
+     * Get all category providers
      */
     getAllProviders(): ProviderMap {
-        return this.providers;
+        return this.categoryProviders;
     }
 
     /**
      * Force refresh data for a category
      */
     async refreshCategory(category: AssetCategory): Promise<boolean> {
-        const provider = this.providers[category];
+        const provider = this.categoryProviders[category];
 
         if (!provider) {
             logger.warn(`No provider found for category: ${category}`);
@@ -410,8 +427,29 @@ class ProviderManager {
         }
 
         logger.info(`Manually refreshing data for category: ${category}`);
+        return await this.fetchAndUpdateFromApi(provider, category);
+    }
 
-        return await this.fetchAndUpdateFromApi(provider);
+    /**
+     * Force refresh all data
+     */
+    async refreshAll(): Promise<Record<string, boolean>> {
+        logger.info('Manually refreshing all data');
+
+        const results: Record<string, boolean> = {};
+
+        for (const category of this.categories) {
+            if (this.categoryProviders[category]) {
+                results[category] = await this.fetchAndUpdateFromApi(
+                    this.categoryProviders[category],
+                    category
+                );
+            } else {
+                results[category] = false;
+            }
+        }
+
+        return results;
     }
 
     /**
@@ -420,12 +458,12 @@ class ProviderManager {
     async shutdown(): Promise<void> {
         logger.info('Shutting down all providers');
 
-        for (const [category, provider] of Object.entries(this.providers)) {
+        for (const provider of Object.values(this.providers)) {
             try {
                 await provider.shutdown();
-                logger.info(`Provider shut down: ${category}`);
+                logger.info(`Provider shut down: ${provider.name}`);
             } catch (error) {
-                logger.error(`Error shutting down provider: ${category}`, { error });
+                logger.error(`Error shutting down provider: ${provider.name}`, { error });
             }
         }
 
