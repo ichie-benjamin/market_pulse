@@ -1,7 +1,7 @@
 import axios, { AxiosResponse } from 'axios';
 import CircuitBreaker from 'opossum';
 import { BaseProvider, ErrorResponse, ProviderConnection } from '../provider';
-import { createAsset, validateAsset, Asset, AssetCategory } from '../../models';
+import { createAsset, validateAsset, Asset, AssetCategory, AssetAdditionalData } from '../../models';
 
 // FMP API response interfaces
 interface FMPCryptoQuote {
@@ -243,14 +243,67 @@ class FinancialModelingPrepCryptoProvider extends BaseProvider {
                     return null;
                 }
 
-                let price = item.price;
+                // Determine price with fallback to 0
+                const price = typeof item.price === 'number' ? item.price :
+                    typeof item.currentPrice === 'number' ? item.currentPrice :
+                        typeof item.regularMarketPrice === 'number' ? item.regularMarketPrice :
+                            typeof item.lastPrice === 'number' ? item.lastPrice :
+                                0;
 
-                // If price is not available, try to find it in other fields
-                if (price === undefined || price === null) {
-                    price = item.currentPrice ||
-                        item.regularMarketPrice ||
-                        item.lastPrice ||
-                        0;
+                // Fix for known problematic assets like LUAUSD with extreme changesPercentage values
+                let changePercentage = typeof item.changesPercentage === 'number' ? item.changesPercentage : undefined;
+
+                if (changePercentage !== undefined) {
+                    // Check if it's an unusually large value that's likely incorrect
+                    if (Math.abs(changePercentage) > 1000) {
+                        // Apply a reasonable cap to percentage changes
+                        this.logger.debug('Capping extreme percentage change', {
+                            symbol: item.symbol,
+                            originalValue: changePercentage,
+                            cappedValue: Math.sign(changePercentage) * 100
+                        });
+
+                        // Cap at +/-100%
+                        changePercentage = Math.sign(changePercentage) * 100;
+                    }
+                }
+
+                // Create additional data with proper type handling
+                const additionalData: AssetAdditionalData = {};
+
+                // Only add properties if they have valid values
+                if (typeof item.dayLow === 'number') {
+                    additionalData.priceLow24h = item.dayLow;
+                } else if (typeof item.low === 'number') {
+                    additionalData.priceLow24h = item.low;
+                }
+
+                if (typeof item.dayHigh === 'number') {
+                    additionalData.priceHigh24h = item.dayHigh;
+                } else if (typeof item.high === 'number') {
+                    additionalData.priceHigh24h = item.high;
+                }
+
+                if (typeof item.change === 'number') {
+                    additionalData.change24h = item.change;
+                } else if (typeof item.priceChange === 'number') {
+                    additionalData.change24h = item.priceChange;
+                }
+
+                // Use our sanitized changePercentage value
+                if (changePercentage !== undefined) {
+                    additionalData.changePercent24h = changePercentage;
+                } else if (typeof item.priceChangePercent === 'number') {
+                    // Also check the other percent field for extreme values
+                    if (Math.abs(item.priceChangePercent) > 1000) {
+                        additionalData.changePercent24h = Math.sign(item.priceChangePercent) * 100;
+                    } else {
+                        additionalData.changePercent24h = item.priceChangePercent;
+                    }
+                }
+
+                if (typeof item.volume === 'number') {
+                    additionalData.volume24h = item.volume;
                 }
 
                 // Create standard asset
@@ -258,14 +311,8 @@ class FinancialModelingPrepCryptoProvider extends BaseProvider {
                     this.category,
                     item.symbol,
                     item.name || `${item.symbol} ${this.category}`,
-                    price,
-                    {
-                        priceLow24h: item.dayLow || item.low || undefined,
-                        priceHigh24h: item.dayHigh || item.high || undefined,
-                        change24h: item.change || item.priceChange || undefined,
-                        changePercent24h: item.changesPercentage || item.priceChangePercent || undefined,
-                        volume24h: item.volume || undefined
-                    }
+                    price, // price is always a number now
+                    additionalData // all properties have explicit type checks
                 );
 
                 // Validate the asset
@@ -273,7 +320,8 @@ class FinancialModelingPrepCryptoProvider extends BaseProvider {
                 if (error) {
                     this.logger.warn('Invalid asset after transformation', {
                         error: error.message,
-                        asset
+                        symbol: item.symbol,
+                        category: this.category
                     });
                     return null;
                 }

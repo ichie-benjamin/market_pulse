@@ -21,7 +21,8 @@ declare global {
 export function apiKeyAuth(req: Request, res: Response, next: NextFunction): void {
     // Skip authentication if disabled
     if (!config.auth.enabled) {
-        return next();
+        next();
+        return;
     }
 
     // Get API key from request
@@ -35,10 +36,11 @@ export function apiKeyAuth(req: Request, res: Response, next: NextFunction): voi
             method: req.method
         });
 
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'API key is required'
         });
+        return;
     }
 
     // Check if API key is valid
@@ -50,10 +52,11 @@ export function apiKeyAuth(req: Request, res: Response, next: NextFunction): voi
             apiKey: `${apiKey.substring(0, 3)}...${apiKey.substring(apiKey.length - 3)}`
         });
 
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             error: 'Invalid API key'
         });
+        return;
     }
 
     // API key is valid
@@ -73,7 +76,8 @@ export function apiKeyAuth(req: Request, res: Response, next: NextFunction): voi
 export function originCheck(req: Request, res: Response, next: NextFunction): void {
     // Skip origin check if disabled
     if (!config.urlCheck.enabled) {
-        return next();
+        next();
+        return;
     }
 
     // Get origin from request
@@ -86,7 +90,8 @@ export function originCheck(req: Request, res: Response, next: NextFunction): vo
             path: req.path,
             method: req.method
         });
-        return next();
+        next();
+        return;
     }
 
     // Check if origin is allowed
@@ -102,10 +107,11 @@ export function originCheck(req: Request, res: Response, next: NextFunction): vo
             origin
         });
 
-        return res.status(403).json({
+        res.status(403).json({
             success: false,
             error: 'Access denied from this origin'
         });
+        return;
     }
 
     // Origin is allowed
@@ -128,7 +134,8 @@ interface SocketWithAuth extends Socket {
 export function socketAuth(socket: SocketWithAuth, next: (err?: Error) => void): void {
     // Skip authentication if disabled
     if (!config.auth.enabled) {
-        return next();
+        next();
+        return;
     }
 
     // Get API key from connection parameters
@@ -141,7 +148,8 @@ export function socketAuth(socket: SocketWithAuth, next: (err?: Error) => void):
             ip: socket.handshake.address
         });
 
-        return next(new Error('API key is required'));
+        next(new Error('API key is required'));
+        return;
     }
 
     // Check if API key is valid
@@ -152,7 +160,8 @@ export function socketAuth(socket: SocketWithAuth, next: (err?: Error) => void):
             apiKey: `${apiKey.substring(0, 3)}...${apiKey.substring(apiKey.length - 3)}`
         });
 
-        return next(new Error('Invalid API key'));
+        next(new Error('Invalid API key'));
+        return;
     }
 
     // API key is valid
@@ -171,7 +180,8 @@ export function socketAuth(socket: SocketWithAuth, next: (err?: Error) => void):
 export function socketOriginCheck(socket: Socket, next: (err?: Error) => void): void {
     // Skip origin check if disabled
     if (!config.urlCheck.enabled) {
-        return next();
+        next();
+        return;
     }
 
     // Get origin from handshake
@@ -183,7 +193,8 @@ export function socketOriginCheck(socket: Socket, next: (err?: Error) => void): 
             id: socket.id,
             ip: socket.handshake.address
         });
-        return next();
+        next();
+        return;
     }
 
     // Check if origin is allowed
@@ -198,7 +209,8 @@ export function socketOriginCheck(socket: Socket, next: (err?: Error) => void): 
             origin
         });
 
-        return next(new Error('Access denied from this origin'));
+        next(new Error('Access denied from this origin'));
+        return;
     }
 
     // Origin is allowed

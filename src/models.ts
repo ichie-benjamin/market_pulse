@@ -44,18 +44,18 @@ export interface AssetStats {
     lastGenerated: string;
 }
 
-// Asset schema for validation
+// Asset schema for validation - UPDATED to accept any numeric values
 const assetSchema = Joi.object({
     id: Joi.string().required(),
     symbol: Joi.string().required(),
     name: Joi.string().required(),
     category: Joi.string().valid('crypto', 'stocks', 'forex', 'indices', 'commodities').required(),
-    price: Joi.number().min(0).required(),
-    priceLow24h: Joi.number().min(0).optional(),
-    priceHigh24h: Joi.number().min(0).optional(),
-    change24h: Joi.number().optional(),
-    changePercent24h: Joi.number().optional(),
-    volume24h: Joi.number().min(0).optional(),
+    price: Joi.number().required(), // Allow any numeric value
+    priceLow24h: Joi.number().optional(), // Allow any numeric value
+    priceHigh24h: Joi.number().optional(), // Allow any numeric value
+    change24h: Joi.number().optional(), // Allow any numeric value
+    changePercent24h: Joi.number().optional(), // Allow any numeric value
+    volume24h: Joi.number().optional(), // Allow any numeric value
     lastUpdated: Joi.string().isoDate().required()
 });
 

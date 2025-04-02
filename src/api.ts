@@ -3,7 +3,7 @@ import { query, param, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
 import { createLogger, requestIdMiddleware } from './logging';
 import { apiKeyAuth, originCheck } from './api/middleware/auth';
-import { generateAssetStats } from './models';
+import { generateAssetStats, AssetCategory } from './models';
 import { RedisService } from './redis';
 import ProviderManager from './providers';
 
@@ -29,11 +29,13 @@ export function setupApiRoutes(
     // Add rate limiter
     const apiLimiter = rateLimit({
         windowMs: 60 * 1000, // 1 minute
-        max: 120, // 120 requests per minute
+        limit: 120,
         standardHeaders: true,
         legacyHeaders: false,
         message: 'Too many requests, please try again later.',
-        keyGenerator: (req) => req.apiKey || req.ip
+        keyGenerator: (req: Request): string => {
+            return req.apiKey || req.ip || 'unknown';
+        }
     });
 
     // Create API router
@@ -333,7 +335,8 @@ export function setupApiRoutes(
 
                 logger.info('Request to force refresh category', { category });
 
-                const result = await providerManager.refreshCategory(category);
+                // Fixed the type issue by casting category to AssetCategory
+                const result = await providerManager.refreshCategory(category as AssetCategory);
 
                 if (!result) {
                     return res.status(404).json({

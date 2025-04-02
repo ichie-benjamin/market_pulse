@@ -59,8 +59,8 @@ export async function initRedisService(): Promise<RedisService> {
             logger.error('Redis client error', { error: err });
         });
 
-        redisClient.on('reconnecting', (time) => {
-            logger.warn('Redis client reconnecting', { time });
+        redisClient.on('reconnecting', () => {
+            logger.warn('Redis client reconnecting');
         });
 
         // Test connection
