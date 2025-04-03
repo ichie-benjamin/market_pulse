@@ -1,9 +1,17 @@
 import WebSocket from 'ws';
+import axios from 'axios';
 import { BaseProvider, ErrorResponse, ProviderConnection } from '../base';
 import { Asset, AssetCategory, AssetAdditionalData } from '../../models';
 import { createAsset, validateAsset } from '../../models';
-import { SUPPORTED_CATEGORIES, WS_CONFIG, mapToCexioSymbol, mapFromCexioSymbol } from './constants';
+import {
+    SUPPORTED_CATEGORIES,
+    WS_CONFIG,
+    API_CONFIG,
+    mapToCexioSymbol,
+    mapFromCexioSymbol
+} from './constants';
 import { ALLOWED_ASSETS } from '../../constants';
+import { config } from '../../config';
 
 /**
  * CEX.IO WebSocket message formats
@@ -188,6 +196,7 @@ class CexioWebSocketConnection implements ProviderConnection {
 class CexioProvider extends BaseProvider {
     private tickerRequestId = 1;
     private reconnectAttempts = 0;
+    private lastApiRequest = 0; // For API rate limiting
 
     constructor(apiKey?: string) {
         super('cexio', SUPPORTED_CATEGORIES, apiKey);
@@ -200,7 +209,8 @@ class CexioProvider extends BaseProvider {
         this.logger.info('Initializing CEX.IO provider');
 
         try {
-            await this.connectWebSocket();
+            // We don't set up connections here - the ProviderManager will call
+            // either connectWebSocket() or getAssetsByCategory() based on the connection mode
             this.initialized = true;
             this.logger.info('CEX.IO provider initialized successfully');
         } catch (error) {
@@ -320,29 +330,6 @@ class CexioProvider extends BaseProvider {
     }
 
     /**
-     * Check if a symbol is supported by CEX.IO
-     * This could be expanded with a more complete list of supported symbols
-     */
-    private isSupportedSymbol(symbol: string): boolean {
-        // Most common crypto assets on CEX.IO
-        const supportedBaseAssets = ['BTC', 'ETH', 'XRP', 'ADA', 'DOGE', 'LTC', 'BCH', 'SOL', 'MATIC', 'SHIB'];
-
-        // Most common fiat currencies on CEX.IO
-        const supportedQuoteAssets = ['USD', 'EUR', 'GBP'];
-
-        // Check if the symbol matches a supported pattern
-        for (const base of supportedBaseAssets) {
-            for (const quote of supportedQuoteAssets) {
-                if (symbol === `${base}${quote}`) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /**
      * Process ticker data from CEX.IO
      */
     private processTickerData(message: CexioWebSocketMessage): void {
@@ -362,11 +349,8 @@ class CexioProvider extends BaseProvider {
                 });
 
                 // This will be forwarded to the provider manager via the 'data' event
-                if (this.connection) {
-                    // Now we can use the getEventHandlers method from BaseProvider
-                    const dataEventHandlers = this.getEventHandlers('data');
-                    dataEventHandlers.forEach((handler: (data: any) => void) => handler(assets));
-                }
+                const dataEventHandlers = this.getEventHandlers('data');
+                dataEventHandlers.forEach((handler: (data: any) => void) => handler(assets));
             }
         } catch (error) {
             this.logger.error('Error processing CEX.IO ticker data', { error, data: message.data });
@@ -384,112 +368,288 @@ class CexioProvider extends BaseProvider {
     }
 
     /**
+     * Fetch all allowed assets - Implementation for API mode
+     */
+    async getAllAssets(): Promise<Asset[] | ErrorResponse> {
+        return this.fetchTickerDataViaApi();
+    }
+
+    /**
+     * Fetch assets for a specific category - Implementation for API mode
+     */
+    async getAssetsByCategory(category: AssetCategory): Promise<Asset[] | ErrorResponse> {
+        // Only support crypto category
+        if (category !== 'crypto') {
+            return [];
+        }
+
+        return this.fetchTickerDataViaApi();
+    }
+
+    /**
+     * Fetch specific assets by symbols - Implementation for API mode
+     */
+    async getAssetsBySymbols(symbols: string[]): Promise<Asset[] | ErrorResponse> {
+        // Filter symbols to only include crypto assets
+        const cryptoSymbols = symbols.filter(symbol =>
+            ALLOWED_ASSETS.crypto.includes(symbol) &&
+            this.isSupportedSymbol(symbol)
+        );
+
+        if (cryptoSymbols.length === 0) {
+            return [];
+        }
+
+        return this.fetchTickerDataViaApi(cryptoSymbols);
+    }
+
+    /**
+     * Fetch ticker data from CEX.IO API
+     */
+    private async fetchTickerDataViaApi(specificSymbols?: string[]): Promise<Asset[] | ErrorResponse> {
+        try {
+            // Get allowed crypto assets and convert to CEX.IO format
+            const symbolsToFetch = specificSymbols || ALLOWED_ASSETS.crypto;
+
+            const pairs = symbolsToFetch
+                .filter(symbol => this.isSupportedSymbol(symbol))
+                .map(symbol => mapToCexioSymbol(symbol));
+
+            if (pairs.length === 0) {
+                this.logger.warn('No allowed crypto assets for CEX.IO');
+                return [];
+            }
+
+            const url = `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.getTicker}`;
+
+            this.logger.info('Fetching CEX.IO ticker data via API', {
+                url,
+                pairsCount: pairs.length
+            });
+
+            // Respect rate limits
+            await this.respectRateLimit();
+
+            const response = await axios.post(url, { pairs });
+
+            // Update last request timestamp
+            this.lastApiRequest = Date.now();
+
+            // Log the response structure for debugging
+            this.logger.debug('CEX.IO API response received', {
+                status: response.status,
+                dataKeys: Object.keys(response.data),
+                sampleData: JSON.stringify(response.data).substring(0, 200) + '...'
+            });
+
+            if (!response.data || response.status !== 200) {
+                return this.handleError(
+                    new Error('Invalid response from CEX.IO API'),
+                    'fetchTickerDataViaApi',
+                    { status: response.status }
+                );
+            }
+
+            // The CEX.IO response structure has data inside the "data" field
+            if (!response.data.data || typeof response.data.data !== 'object') {
+                return this.handleError(
+                    new Error('Missing or invalid data field in response'),
+                    'fetchTickerDataViaApi',
+                    { response: JSON.stringify(response.data).substring(0, 200) + '...' }
+                );
+            }
+
+            // Extract the actual ticker data from response.data.data
+            const tickerData = response.data.data;
+
+            // Transform the data to our standard format
+            const assets = this.transform(tickerData);
+
+            this.logger.info('CEX.IO API data fetched successfully', {
+                assetCount: assets.length
+            });
+
+            return assets;
+        } catch (error) {
+            return this.handleError(error as Error, 'fetchTickerDataViaApi');
+        }
+    }
+
+    /**
+     * Respect API rate limits based on update interval configuration
+     */
+    private async respectRateLimit(): Promise<void> {
+        const now = Date.now();
+        const timeSinceLastRequest = now - this.lastApiRequest;
+        const minRequestInterval = Math.max(500, Math.floor(config.updateIntervals.crypto / 10));
+
+        if (timeSinceLastRequest < minRequestInterval) {
+            const delayMs = minRequestInterval - timeSinceLastRequest;
+            this.logger.debug(`Delaying API request by ${delayMs}ms to respect rate limits`);
+
+            return new Promise((resolve) => {
+                setTimeout(resolve, delayMs);
+            });
+        }
+    }
+
+    /**
      * Transform CEX.IO ticker data to standard assets
      */
-    transform(data: Record<string, CexioTickerData>, category?: AssetCategory): Asset[] {
+    transform(data: any, category?: AssetCategory): Asset[] {
         const assets: Asset[] = [];
 
         // If specific category is requested, filter to that category
         const targetCategory: AssetCategory = category || 'crypto';
 
-        // Process each ticker in the data
-        for (const [cexioPair, ticker] of Object.entries(data)) {
-            try {
-                // Convert CEX.IO pair format to our internal format
-                const internalSymbol = mapFromCexioSymbol(cexioPair);
-
-                console.log('internalSymbol', internalSymbol)
-
-                // Skip if not in our allowed assets list
-                if (!ALLOWED_ASSETS[targetCategory].includes(internalSymbol)) {
-                    continue;
-                }
-
-                // Create additional data with proper type handling
-                const additionalData: AssetAdditionalData = {};
-
-                if (ticker.low) {
-                    additionalData.priceLow24h = ticker.low;
-                }
-
-                if (ticker.high) {
-                    additionalData.priceHigh24h = ticker.high;
-                }
-
-                if (ticker.priceChange) {
-                    additionalData.change24h = ticker.priceChange;
-                }
-
-                if (ticker.priceChangePercentage) {
-                    additionalData.changePercent24h = ticker.priceChangePercentage;
-                }
-
-                if (ticker.volume) {
-                    additionalData.volume24h = ticker.volume;
-                }
-
-                // Create standard asset using our internal symbol format
-                const asset = createAsset(
-                    targetCategory,
-                    internalSymbol,
-                    `${internalSymbol.slice(0, -3)} / ${internalSymbol.slice(-3)}`, // e.g., "BTC / USD"
-                    ticker.last || ticker.lastTradePrice || '0',
-                    additionalData
-                );
-
-
-
-                // Validate the asset
-                const { error } = validateAsset(asset);
-                if (error) {
-                    this.logger.warn('Invalid asset after transformation', {
-                        error: error.message,
-                        pair: cexioPair,
-                        symbol: internalSymbol
-                    });
-                    continue;
-                }
-
-                assets.push(asset);
-            } catch (error) {
-                this.logger.error('Error transforming CEX.IO ticker data', {
-                    error,
-                    pair: cexioPair
-                });
+        try {
+            // Check if data is array or object
+            if (!data || typeof data !== 'object') {
+                this.logger.error('Invalid data format for transform', { dataType: typeof data });
+                return assets;
             }
+
+            // Log the structure of the data
+            this.logger.debug('Transform data structure', {
+                isArray: Array.isArray(data),
+                keys: Object.keys(data).slice(0, 5),
+                sampleValue: Object.values(data)[0] ? JSON.stringify(Object.values(data)[0]).substring(0, 200) : 'No values'
+            });
+
+            // Handle both possible response formats from CEX.IO
+            let tickerEntries: [string, any][] = [];
+
+            if (Array.isArray(data)) {
+                // If response is an array of ticker objects with a 'pair' property
+                tickerEntries = data.map(item => {
+                    const pair = item.pair || '';
+                    return [pair, item];
+                });
+            } else {
+                // If response is an object with pair keys
+                tickerEntries = Object.entries(data);
+            }
+
+            // Process each ticker in the data
+            for (const [cexioPair, ticker] of tickerEntries) {
+                try {
+                    if (!cexioPair || typeof ticker !== 'object' || ticker === null) {
+                        this.logger.warn('Invalid ticker data', { cexioPair, ticker: typeof ticker });
+                        continue;
+                    }
+
+                    // Skip entries with error messages
+                    if (ticker.error) {
+                        this.logger.info('Skipping ticker with error', {
+                            pair: cexioPair,
+                            error: ticker.error
+                        });
+                        continue;
+                    }
+
+                    // Convert CEX.IO pair format to our internal format
+                    const internalSymbol = mapFromCexioSymbol(cexioPair);
+
+                    this.logger.debug('Processing ticker', {
+                        cexioPair,
+                        internalSymbol,
+                        tickerKeys: Object.keys(ticker),
+                        isAllowed: ALLOWED_ASSETS[targetCategory].includes(internalSymbol)
+                    });
+
+                    // Skip if not in our allowed assets list
+                    if (!ALLOWED_ASSETS[targetCategory].includes(internalSymbol)) {
+                        continue;
+                    }
+
+                    // Create additional data with proper type handling
+                    const additionalData: AssetAdditionalData = {};
+
+                    if (ticker.low) {
+                        additionalData.priceLow24h = ticker.low;
+                    }
+
+                    if (ticker.high) {
+                        additionalData.priceHigh24h = ticker.high;
+                    }
+
+                    if (ticker.priceChange) {
+                        additionalData.change24h = ticker.priceChange;
+                    }
+
+                    if (ticker.priceChangePercentage) {
+                        additionalData.changePercent24h = ticker.priceChangePercentage;
+                    }
+
+                    if (ticker.volume) {
+                        additionalData.volume24h = ticker.volume;
+                    }
+
+                    // Extract price with fallbacks for different possible field names
+                    const price =
+                        ticker.last ||
+                        ticker.lastTradePrice ||
+                        ticker.price ||
+                        ticker.currentPrice ||
+                        0;
+
+                    // Create standard asset using our internal symbol format
+                    const asset = createAsset(
+                        targetCategory,
+                        internalSymbol,
+                        `${internalSymbol.slice(0, -3)} / ${internalSymbol.slice(-3)}`, // e.g., "BTC / USD"
+                        price,
+                        additionalData
+                    );
+
+                    // Validate the asset
+                    const { error } = validateAsset(asset);
+                    if (error) {
+                        this.logger.warn('Invalid asset after transformation', {
+                            error: error.message,
+                            pair: cexioPair,
+                            symbol: internalSymbol
+                        });
+                        continue;
+                    }
+
+                    assets.push(asset);
+                } catch (error) {
+                    this.logger.error('Error transforming CEX.IO ticker data', {
+                        error,
+                        pair: cexioPair
+                    });
+                }
+            }
+        } catch (error) {
+            this.logger.error('Error in transform method', { error });
         }
 
+        this.logger.info('Transformed assets', { count: assets.length });
         return assets;
     }
 
     /**
-     * Fetch all allowed assets
-     * Note: This is not used for WebSocket providers, but required by BaseProvider
+     * Check if a symbol is supported by CEX.IO
+     * This could be expanded with a more complete list of supported symbols
      */
-    async getAllAssets(): Promise<Asset[] | ErrorResponse> {
-        // CEX.IO is WebSocket-based, so we don't fetch data via REST API
-        // Instead, we return an empty array as this method isn't used
-        return [];
-    }
+    private isSupportedSymbol(symbol: string): boolean {
+        // Most common crypto assets on CEX.IO
+        const supportedBaseAssets = ["VET","ALGO","EOS","LINK","UNI","SOL","NEO","MKR","TRX","BCH","XTZ","DOGE","KSM","ETH","DOT","CAKE","XLM","CRO","FIL","AVAX","XRP","WBTC","BTC","USDT","BNB","LTC","USDC","GRT","ADA","ATOM","AXS","THETA","DASH","DAI","AAVE","ICP"];
 
-    /**
-     * Fetch assets for a specific category
-     * Note: This is not used for WebSocket providers, but required by BaseProvider
-     */
-    async getAssetsByCategory(category: AssetCategory): Promise<Asset[] | ErrorResponse> {
-        // CEX.IO is WebSocket-based, so we don't fetch data via REST API
-        // Instead, we return an empty array as this method isn't used
-        return [];
-    }
+        // Most common fiat currencies on CEX.IO
+        const supportedQuoteAssets = ['USD'];
 
-    /**
-     * Fetch specific assets by symbols
-     * Note: This is not used for WebSocket providers, but required by BaseProvider
-     */
-    async getAssetsBySymbols(symbols: string[]): Promise<Asset[] | ErrorResponse> {
-        // CEX.IO is WebSocket-based, so we don't fetch data via REST API
-        // Instead, we return an empty array as this method isn't used
-        return [];
+        // Check if the symbol matches a supported pattern
+        for (const base of supportedBaseAssets) {
+            for (const quote of supportedQuoteAssets) {
+                if (symbol === `${base}${quote}`) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }
 

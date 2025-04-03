@@ -19,6 +19,16 @@ export const WS_CONFIG = {
 };
 
 /**
+ * API configuration for CEX.IO
+ */
+export const API_CONFIG = {
+    baseUrl: 'https://trade.cex.io/api/spot/rest-public',
+    endpoints: {
+        getTicker: '/get_ticker'
+    }
+};
+
+/**
  * Map our internal symbol format to CEX.IO's format
  * CEX.IO uses "BTC-USD" while we standardize on "BTCUSD"
  * @param symbol - Symbol in our internal format (e.g., "BTCUSD")
