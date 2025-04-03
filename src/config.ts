@@ -107,7 +107,7 @@ export const config: Config = {
     // Provider connection modes
     connectionModes: {
         financialmodelingprep: process.env.FINANCIALMODELINGPREP_CONNECTION_MODE || 'api',
-        cexio: process.env.COINCAP_CONNECTION_MODE || 'ws',
+        cexio: process.env.CEXIO_CONNECTION_MODE || 'ws',
         coincap: process.env.COINCAP_CONNECTION_MODE || 'ws',
         alphavantage: process.env.ALPHAVANTAGE_CONNECTION_MODE || 'api',
         fixer: process.env.FIXER_CONNECTION_MODE || 'api'
