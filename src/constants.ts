@@ -25,9 +25,9 @@ export const ALLOWED_ASSETS: Record<AssetCategory, string[]> = {
         "NZDCAD","EURJPY"],
 
     indices: [
-        'SPY', 'QQQ', 'DIA', 'IWM', 'VTI', 'EFA', 'EEM', 'VGK', 'VPL', 'SPX',
-        'NDX', 'DJI', 'RUT'
+        "MSCI","EEM","JCI","STI","TOPIX","JALSH","DAX","USDX","QQQ","SMI","IBEX","COMP","TQQQ"
     ],
+
     commodities: [
     'HEUSX', 'ZCUSX', 'ZQUSD', 'ALIUSD', 'ZBUSD', 'ZOUSX', 'PLUSD', 'ESUSD', 'ZMUSD',
     'GCUSD', 'ZLUSX', 'KEUSX', 'ZFUSD', 'SILUSD', 'HGUSD', 'MGCUSD', 'SBUSX', 'SIUSD',
