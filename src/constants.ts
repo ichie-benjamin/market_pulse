@@ -12,7 +12,7 @@ export const ALLOWED_ASSETS: Record<AssetCategory, string[]> = {
         "MA","AAPL","CVX","MGM","NKE","ACN","DANOY","SHOP","DAL","MMM",
         "TWTR","FB","AZO","INTC","CMCSA","JNJ","TMO","VWAGY","GILD","TXN","AAP",
         "ADDYY","CRON","SIEGY","V","T","PFE","PYPL","MCD","AFL","TRIP","TSLA","NIO","BCS","AMAT",
-        "MSFT","BMWYY","BABA","ADI","BAC","XOM","DELL","HSBC","CGC","BBVA","GS","WFC","DIS","EBAY",
+        "MSFT","BABA","ADI","BAC","XOM","DELL","HSBC","CGC","BBVA","GS","WFC","DIS","EBAY",
         "RACE","AIG","SBUX","TSM","BA","MCO","BNPQF","SCGLY","GOOG","WIX","AVGO","ORCL","F","NEE",
         "MRNA","IBM","BIDU","NFLX","ALK","MCD","TEVA","KHC","BK","VZ","QCOM",
         "NVDA","MRK","MA","PG","ZM","AMZN","KO.N","LVMHF","ADBE"],
@@ -24,17 +24,9 @@ export const ALLOWED_ASSETS: Record<AssetCategory, string[]> = {
         "EURCAD","USDZAR","CHFJPY","NZDJPY","USDDKK","USDCAD","NZDCHF","EURTRY",
         "NZDCAD","EURJPY"],
 
-    indices: [
-        "MSCI","EEM","JCI","STI","TOPIX","JALSH","DAX","USDX","QQQ","SMI","IBEX","COMP","TQQQ"
-    ],
+    indices: [],
 
-    commodities: [
-    'HEUSX', 'ZCUSX', 'ZQUSD', 'ALIUSD', 'ZBUSD', 'ZOUSX', 'PLUSD', 'ESUSD', 'ZMUSD',
-    'GCUSD', 'ZLUSX', 'KEUSX', 'ZFUSD', 'SILUSD', 'HGUSD', 'MGCUSD', 'SBUSX', 'SIUSD',
-    'CTUSX', 'DXUSD', 'ZSUSX', 'LBUSD', 'LEUSX', 'NGUSD', 'CLUSD', 'OJUSX', 'KCUSX',
-    'PAUSD', 'GFUSX', 'ZTUSD', 'ZRUSD', 'CCUSD', 'NQUSD', 'ZNUSD', 'RTYUSD', 'BZUSD',
-    'DCUSD', 'YMUSD', 'RBUSD', 'HOUSD'
-    ]
+    commodities: []
 };
 
 /**
