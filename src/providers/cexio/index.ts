@@ -300,6 +300,7 @@ class CexioProvider extends BaseProvider {
     private subscribeToTickers(connection: CexioWebSocketConnection): void {
         // Get allowed crypto assets and convert to CEX.IO format
         const pairs = ALLOWED_ASSETS.crypto
+            .map(asset => asset.name)
             .filter(symbol => this.isSupportedSymbol(symbol))
             .map(symbol => mapToCexioSymbol(symbol));
 
@@ -328,6 +329,7 @@ class CexioProvider extends BaseProvider {
         // Send subscription message
         connection.send(message);
     }
+
 
     /**
      * Process ticker data from CEX.IO
@@ -389,12 +391,14 @@ class CexioProvider extends BaseProvider {
     /**
      * Fetch specific assets by symbols - Implementation for API mode
      */
+
     async getAssetsBySymbols(symbols: string[]): Promise<Asset[] | ErrorResponse> {
         // Filter symbols to only include crypto assets
-        const cryptoSymbols = symbols.filter(symbol =>
-            ALLOWED_ASSETS.crypto.includes(symbol) &&
-            this.isSupportedSymbol(symbol)
-        );
+        const cryptoSymbols = symbols.filter(symbol => {
+            // Check if this symbol exists in our allowed crypto assets
+            const assetExists = ALLOWED_ASSETS.crypto.some(asset => asset.name === symbol);
+            return assetExists && this.isSupportedSymbol(symbol);
+        });
 
         if (cryptoSymbols.length === 0) {
             return [];
@@ -403,13 +407,30 @@ class CexioProvider extends BaseProvider {
         return this.fetchTickerDataViaApi(cryptoSymbols);
     }
 
+
     /**
-     * Fetch ticker data from CEX.IO API
+     * Respect API rate limits based on update interval configuration
      */
+    private async respectRateLimit(): Promise<void> {
+        const now = Date.now();
+        const timeSinceLastRequest = now - this.lastApiRequest;
+        const minRequestInterval = Math.max(500, Math.floor(config.updateIntervals.crypto / 10));
+
+        if (timeSinceLastRequest < minRequestInterval) {
+            const delayMs = minRequestInterval - timeSinceLastRequest;
+            this.logger.debug(`Delaying API request by ${delayMs}ms to respect rate limits`);
+
+            return new Promise((resolve) => {
+                setTimeout(resolve, delayMs);
+            });
+        }
+    }
+
+
     private async fetchTickerDataViaApi(specificSymbols?: string[]): Promise<Asset[] | ErrorResponse> {
         try {
             // Get allowed crypto assets and convert to CEX.IO format
-            const symbolsToFetch = specificSymbols || ALLOWED_ASSETS.crypto;
+            const symbolsToFetch = specificSymbols || ALLOWED_ASSETS.crypto.map(asset => asset.name);
 
             const pairs = symbolsToFetch
                 .filter(symbol => this.isSupportedSymbol(symbol))
@@ -476,24 +497,6 @@ class CexioProvider extends BaseProvider {
     }
 
     /**
-     * Respect API rate limits based on update interval configuration
-     */
-    private async respectRateLimit(): Promise<void> {
-        const now = Date.now();
-        const timeSinceLastRequest = now - this.lastApiRequest;
-        const minRequestInterval = Math.max(500, Math.floor(config.updateIntervals.crypto / 10));
-
-        if (timeSinceLastRequest < minRequestInterval) {
-            const delayMs = minRequestInterval - timeSinceLastRequest;
-            this.logger.debug(`Delaying API request by ${delayMs}ms to respect rate limits`);
-
-            return new Promise((resolve) => {
-                setTimeout(resolve, delayMs);
-            });
-        }
-    }
-
-    /**
      * Transform CEX.IO ticker data to standard assets
      */
     transform(data: any, category?: AssetCategory): Asset[] {
@@ -550,15 +553,18 @@ class CexioProvider extends BaseProvider {
                     // Convert CEX.IO pair format to our internal format
                     const internalSymbol = mapFromCexioSymbol(cexioPair);
 
+                    // Find the asset in our allowed assets
+                    const allowedAsset = ALLOWED_ASSETS[targetCategory].find(asset => asset.name === internalSymbol);
+
                     this.logger.debug('Processing ticker', {
                         cexioPair,
                         internalSymbol,
                         tickerKeys: Object.keys(ticker),
-                        isAllowed: ALLOWED_ASSETS[targetCategory].includes(internalSymbol)
+                        isAllowed: allowedAsset !== undefined
                     });
 
                     // Skip if not in our allowed assets list
-                    if (!ALLOWED_ASSETS[targetCategory].includes(internalSymbol)) {
+                    if (!allowedAsset) {
                         continue;
                     }
 
@@ -597,7 +603,8 @@ class CexioProvider extends BaseProvider {
                     const asset = createAsset(
                         targetCategory,
                         internalSymbol,
-                        `${internalSymbol.slice(0, -3)} / ${internalSymbol.slice(-3)}`, // e.g., "BTC / USD"
+                        // Use display name from allowed assets if available
+                        allowedAsset.displayName || `${internalSymbol.slice(0, -3)} / ${internalSymbol.slice(-3)}`,
                         price,
                         additionalData
                     );
@@ -640,16 +647,19 @@ class CexioProvider extends BaseProvider {
         // Most common fiat currencies on CEX.IO
         const supportedQuoteAssets = ['USD'];
 
-        // Check if the symbol matches a supported pattern
-        for (const base of supportedBaseAssets) {
-            for (const quote of supportedQuoteAssets) {
-                if (symbol === `${base}${quote}`) {
-                    return true;
+        // Extract the base and quote from our symbol format (e.g., BTCUSD)
+        const findSupportedBaseCurrency = () => {
+            for (const base of supportedBaseAssets) {
+                for (const quote of supportedQuoteAssets) {
+                    if (symbol === `${base}${quote}`) {
+                        return true;
+                    }
                 }
             }
-        }
+            return false;
+        };
 
-        return false;
+        return findSupportedBaseCurrency();
     }
 }
 

@@ -1,10 +1,10 @@
-import axios, { AxiosResponse } from 'axios';
+import axios, {AxiosResponse} from 'axios';
 import CircuitBreaker from 'opossum';
-import { BaseProvider, ErrorResponse } from '../base';
-import { createAsset, validateAsset, Asset, AssetCategory, AssetAdditionalData } from '../../models';
-import { SUPPORTED_CATEGORIES,  API_ENDPOINTS } from './constants';
+import {BaseProvider, ErrorResponse} from '../base';
+import {Asset, AssetAdditionalData, AssetCategory, createAsset, validateAsset} from '../../models';
+import {API_ENDPOINTS, SUPPORTED_CATEGORIES} from './constants';
 
-import { ALLOWED_ASSETS, getAllAllowedAssets } from '../../constants';
+import {ALLOWED_ASSETS, getAllAllowedAssets} from '../../constants';
 
 // FMP API response interfaces
 interface FMPQuote {
@@ -174,13 +174,12 @@ class FinancialModelingPrepProvider extends BaseProvider {
             });
 
             // Transform to standard format
-            const assets = this.transform(allQuotes);
-
-            return assets;
+            return this.transform(allQuotes);
         } catch (error) {
             return this.handleError(error as Error, 'getAllAssets');
         }
     }
+
 
     /**
      * Fetch assets for a specific category
@@ -195,7 +194,7 @@ class FinancialModelingPrepProvider extends BaseProvider {
                 );
             }
 
-            const allowedAssets = ALLOWED_ASSETS[category];
+            const allowedAssets = ALLOWED_ASSETS[category].map(asset => asset.name);
 
             if (!allowedAssets || allowedAssets.length === 0) {
                 this.logger.info('No allowed assets for category', { category });
@@ -306,7 +305,7 @@ class FinancialModelingPrepProvider extends BaseProvider {
                     // Try to determine category from symbol
                     // For FMP, we rely on the allowed asset lists
                     for (const [cat, symbols] of Object.entries(ALLOWED_ASSETS)) {
-                        if (symbols.includes(item.symbol)) {
+                        if (symbols.some(asset => asset.name === item.symbol)) {
                             assetCategory = cat as AssetCategory;
                             break;
                         }
@@ -318,6 +317,9 @@ class FinancialModelingPrepProvider extends BaseProvider {
                         continue;
                     }
                 }
+
+                // Find the allowed asset to get the display name
+                const allowedAsset = ALLOWED_ASSETS[assetCategory].find(a => a.name === item.symbol);
 
                 // Determine price with fallback to 0
                 const price = typeof item.price === 'number' ? item.price :
@@ -382,7 +384,8 @@ class FinancialModelingPrepProvider extends BaseProvider {
                 const asset = createAsset(
                     assetCategory,
                     item.symbol,
-                    item.name || `${item.symbol} ${assetCategory}`,
+                    // Use display name from allowed assets if available, otherwise fallback to symbol name
+                    allowedAsset?.displayName || item.name || `${item.symbol} ${assetCategory}`,
                     price,
                     additionalData
                 );

@@ -8,6 +8,7 @@ import {BaseProvider} from './base';
 // Import provider implementations
 import FinancialModelingPrepProvider from './financialmodelingprep';
 import CexioProvider from './cexio';
+import OandaProvider from "./oanda";
 
 const logger: Logger = createLogger('provider-manager');
 
@@ -44,6 +45,7 @@ class ProviderManager {
             // Initialize the providers based on configuration
             await this.initializeProvider('financialmodelingprep');
             await this.initializeProvider('cexio');
+            await this.initializeProvider('oanda');
             // Add other providers as needed
 
             // Map providers to categories
@@ -83,7 +85,9 @@ class ProviderManager {
                     cexioProvider.addEventListener('data', (assets: Asset[]) => {
                         this.handleWebSocketData(cexioProvider, assets);
                     });
-
+                    break;
+                case 'oanda':
+                    provider = new OandaProvider(config.apiKeys.oanda);
                     break;
 
                 // Add other providers here as they're implemented

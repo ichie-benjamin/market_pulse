@@ -100,8 +100,9 @@ export const config: Config = {
         crypto: process.env.CRYPTO_PROVIDER || 'cexio', // Default to CEX.IO for crypto
         stocks: process.env.STOCKS_PROVIDER || 'financialmodelingprep',
         forex: process.env.FOREX_PROVIDER || 'financialmodelingprep',
-        indices: process.env.INDICES_PROVIDER || 'financialmodelingprep',
-        commodities: process.env.COMMODITIES_PROVIDER || 'financialmodelingprep'
+        indices: process.env.INDICES_PROVIDER || 'oanda',
+        commodities: process.env.COMMODITIES_PROVIDER || 'oanda',
+        metals: process.env.METALS_PROVIDER || 'oanda',
     },
 
     // Provider connection modes
@@ -109,6 +110,7 @@ export const config: Config = {
         financialmodelingprep: process.env.FINANCIALMODELINGPREP_CONNECTION_MODE || 'api',
         cexio: process.env.CEXIO_CONNECTION_MODE || 'ws',
         coincap: process.env.COINCAP_CONNECTION_MODE || 'ws',
+        oanda: process.env.COINCAP_CONNECTION_MODE || 'api',
         alphavantage: process.env.ALPHAVANTAGE_CONNECTION_MODE || 'api',
         fixer: process.env.FIXER_CONNECTION_MODE || 'api'
     },
@@ -119,7 +121,8 @@ export const config: Config = {
         cexio: process.env.CEXIO_API_KEY,
         coincap: process.env.COINCAP_API_KEY,
         alphavantage: process.env.ALPHAVANTAGE_API_KEY,
-        fixer: process.env.FIXER_API_KEY
+        fixer: process.env.FIXER_API_KEY,
+        oanda: process.env.OANDA_API_KEY,
     },
 
     // Update intervals for API polling (in milliseconds)
@@ -128,7 +131,8 @@ export const config: Config = {
         stocks: parseInt(process.env.STOCKS_UPDATE_INTERVAL || '60000', 10),
         forex: parseInt(process.env.FOREX_UPDATE_INTERVAL || '5000', 10),
         indices: parseInt(process.env.INDICES_UPDATE_INTERVAL || '60000', 10),
-        commodities: parseInt(process.env.COMMODITIES_UPDATE_INTERVAL || '60000', 10)
+        commodities: parseInt(process.env.COMMODITIES_UPDATE_INTERVAL || '60000', 10),
+        metals: parseInt(process.env.METAL_UPDATE_INTERVAL || '5000', 10)
     }
 };
 

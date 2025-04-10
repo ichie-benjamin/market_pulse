@@ -4,11 +4,11 @@ import { AssetCategory } from '../../models';
  * Supported asset categories for Financial Modeling Prep provider
  */
 export const SUPPORTED_CATEGORIES: AssetCategory[] = [
-    'crypto',
+    // 'crypto',
     'stocks',
     'forex',
-    'indices',
-    'commodities'
+    // 'indices',
+    // 'commodities'
 ];
 
 /**

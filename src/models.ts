@@ -1,32 +1,9 @@
 import Joi from 'joi';
+import {getAssetTradingViewSymbol} from "./constants";
 
 // Define asset categories
-export type AssetCategory = 'crypto' | 'stocks' | 'forex' | 'indices' | 'commodities';
+export type AssetCategory = 'crypto' | 'stocks' | 'forex' | 'indices' | 'commodities' | 'metals';
 
-// Define asset interface
-export interface Asset {
-    id: string;
-    symbol: string;
-    name: string;
-    category: AssetCategory;
-    price: number;
-    priceLow24h?: number;
-    priceHigh24h?: number;
-    change24h?: number;
-    changePercent24h?: number;
-    volume24h?: number;
-    lastUpdated: string;
-}
-
-// Define additional data interface
-export interface AssetAdditionalData {
-    priceLow24h?: number | string;
-    priceHigh24h?: number | string;
-    change24h?: number | string;
-    changePercent24h?: number | string;
-    volume24h?: number | string;
-    [key: string]: any;
-}
 
 // Define asset stats interface
 export interface AssetStats {
@@ -44,29 +21,57 @@ export interface AssetStats {
     lastGenerated: string;
 }
 
-// Asset schema for validation - UPDATED to accept any numeric values
+
+export interface Asset {
+    id: string;
+    symbol: string;
+    name: string;
+    category: AssetCategory;
+    price: number;
+    priceLow24h?: number;
+    priceHigh24h?: number;
+    change24h?: number;
+    changePercent24h?: number;
+    volume24h?: number;
+    lastUpdated: string;
+
+    // New fields for enhanced asset information
+    displayName?: string;    // Human-readable name (optional)
+    tradingViewSymbol?: string;  // TradingView symbol (optional)
+}
+
+// Define additional data interface
+export interface AssetAdditionalData {
+    priceLow24h?: number | string;
+    priceHigh24h?: number | string;
+    change24h?: number | string;
+    changePercent24h?: number | string;
+    volume24h?: number | string;
+    displayName?: string;   // Human-readable name
+    tradingViewSymbol?: string; // TradingView symbol
+    [key: string]: any;
+}
+
+// Update the asset schema for validation
 const assetSchema = Joi.object({
     id: Joi.string().required(),
     symbol: Joi.string().required(),
     name: Joi.string().required(),
     category: Joi.string().valid('crypto', 'stocks', 'forex', 'indices', 'commodities').required(),
-    price: Joi.number().required(), // Allow any numeric value
-    priceLow24h: Joi.number().optional(), // Allow any numeric value
-    priceHigh24h: Joi.number().optional(), // Allow any numeric value
-    change24h: Joi.number().optional(), // Allow any numeric value
-    changePercent24h: Joi.number().optional(), // Allow any numeric value
-    volume24h: Joi.number().optional(), // Allow any numeric value
-    lastUpdated: Joi.string().isoDate().required()
+    price: Joi.number().required(),
+    priceLow24h: Joi.number().optional(),
+    priceHigh24h: Joi.number().optional(),
+    change24h: Joi.number().optional(),
+    changePercent24h: Joi.number().optional(),
+    volume24h: Joi.number().optional(),
+    lastUpdated: Joi.string().isoDate().required(),
+    displayName: Joi.string().optional(),
+    tradingViewSymbol: Joi.string().optional()
 });
 
 /**
  * Create a standard asset object from provider data
- * @param category - Asset category
- * @param symbol - Asset symbol
- * @param name - Asset name
- * @param price - Current price
- * @param additionalData - Additional asset data
- * @returns Standardized asset object
+ * Updated to include displayName and tradingViewSymbol
  */
 export function createAsset(
     category: AssetCategory,
@@ -107,6 +112,21 @@ export function createAsset(
 
     if (additionalData.volume24h !== undefined) {
         asset.volume24h = Number(additionalData.volume24h);
+    }
+
+    // Add new fields if provided
+    if (additionalData.displayName !== undefined) {
+        asset.displayName = additionalData.displayName;
+    }
+
+    if (additionalData.tradingViewSymbol !== undefined) {
+        asset.tradingViewSymbol = additionalData.tradingViewSymbol;
+    } else {
+        // Try to get TradingView symbol from our constants
+        const tvSymbol = getAssetTradingViewSymbol(symbol);
+        if (tvSymbol) {
+            asset.tradingViewSymbol = tvSymbol;
+        }
     }
 
     return asset;
