@@ -28,7 +28,7 @@ class ProviderManager {
         this.providers = {};
         this.categoryProviders = {};
         this.directStreamSubscribers = new Map(); // For Turbo Mode
-        this.categories = ['crypto', 'stocks', 'forex', 'indices', 'commodities'];
+        this.categories = ['crypto', 'stocks', 'forex', 'indices', 'commodities','metals'];
     }
 
     /**
