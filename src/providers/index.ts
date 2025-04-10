@@ -34,7 +34,7 @@ class ProviderManager {
     /**
      * Initialize all providers
      */
-    async initializeOld(): Promise<boolean> {
+    async initialize(): Promise<boolean> {
         logger.info('Initializing provider manager');
 
         try {
@@ -65,7 +65,7 @@ class ProviderManager {
         }
     }
 
-    async initialize(): Promise<boolean> {
+    async initializeTest(): Promise<boolean> {
         logger.info('Initializing provider manager');
 
         logger.info('Provider configuration from config.ts:', {
@@ -194,7 +194,7 @@ class ProviderManager {
     /**
      * Map providers to categories based on what they support
      */
-    mapProvidersToCategoriesOld(): void {
+    mapProvidersToCategories(): void {
         // Reset category mapping
         this.categoryProviders = {};
 
@@ -220,7 +220,7 @@ class ProviderManager {
     }
 
 
-    mapProvidersToCategories(): void {
+    mapProvidersToCategoriesTest(): void {
         // Reset category mapping
         this.categoryProviders = {};
 
