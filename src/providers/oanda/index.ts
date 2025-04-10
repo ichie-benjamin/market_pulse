@@ -154,7 +154,7 @@ class OandaProvider extends BaseProvider {
      * @param category Asset category to fetch
      * @returns Promise with assets or error
      */
-    async getAssetsByCategory(category: AssetCategory): Promise<Asset[] | ErrorResponse> {
+    async getAssetsByCategoryOld(category: AssetCategory): Promise<Asset[] | ErrorResponse> {
         try {
             if (!this.supportsCategory(category)) {
                 return this.handleError(
@@ -192,6 +192,70 @@ class OandaProvider extends BaseProvider {
             return this.handleError(error as Error, 'getAssetsByCategory', { category });
         }
     }
+
+
+    async getAssetsByCategory(category: AssetCategory): Promise<Asset[] | ErrorResponse> {
+        try {
+            this.logger.info(`OANDA: getAssetsByCategory called for ${category}`);
+
+            if (!this.supportsCategory(category)) {
+                this.logger.error(`OANDA: Category ${category} not supported!`);
+                return this.handleError(
+                    new Error(`Category ${category} not supported by Oanda provider`),
+                    'getAssetsByCategory',
+                    { category }
+                );
+            }
+
+            // Get allowed assets for this category
+            const allowedAssets = ALLOWED_ASSETS[category];
+
+            this.logger.info(`OANDA: Found ${allowedAssets.length} allowed assets for ${category}`);
+
+            if (!allowedAssets || allowedAssets.length === 0) {
+                this.logger.info('No allowed assets for category', { category });
+                return [];
+            }
+
+            // Convert each asset name to Oanda format
+            const oandaInstruments = allowedAssets.map(asset => formatOandaSymbol(asset.name));
+
+            this.logger.info(`OANDA: Making API request with ${oandaInstruments.length} instruments`, {
+                sampleInstruments: oandaInstruments.slice(0, 5)
+            });
+
+            // Make API request for these instruments
+            try {
+                const response = await this.makeApiRequest(oandaInstruments);
+                this.logger.info(`OANDA: API request successful`, {
+                    receivedItems: response.prices?.length || 0
+                });
+
+                // Transform to standard format
+                const assets = this.transform(response, category);
+
+                this.logger.info(`OANDA: Transformed data for ${category}`, {
+                    inputCount: response.prices?.length || 0,
+                    outputCount: assets.length
+                });
+
+                return assets;
+            } catch (apiError) {
+                this.logger.error(`OANDA: API request failed`, {
+                    error: apiError,
+                    category
+                });
+                throw apiError;
+            }
+        } catch (error) {
+            this.logger.error(`OANDA: Error in getAssetsByCategory`, {
+                error: error,
+            });
+            return this.handleError(error as Error, 'getAssetsByCategory', { category });
+        }
+    }
+
+
 
     /**
      * Fetch assets by symbols

@@ -194,7 +194,7 @@ class ProviderManager {
     /**
      * Map providers to categories based on what they support
      */
-    mapProvidersToCategories(): void {
+    mapProvidersToCategoriesOld(): void {
         // Reset category mapping
         this.categoryProviders = {};
 
@@ -220,7 +220,7 @@ class ProviderManager {
     }
 
 
-    mapProvidersToCategoriesTest(): void {
+    mapProvidersToCategories(): void {
         // Reset category mapping
         this.categoryProviders = {};
 
