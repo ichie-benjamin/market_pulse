@@ -147,7 +147,7 @@ class ProviderManager {
     /**
      * Map providers to categories based on what they support
      */
-    mapProvidersToCategories(): void {
+    mapProvidersToCategoriesOld(): void {
         // Reset category mapping
         this.categoryProviders = {};
 
@@ -170,6 +170,49 @@ class ProviderManager {
                 logger.warn(`No provider assigned for category: ${category}`);
             }
         });
+    }
+
+
+    mapProvidersToCategories(): void {
+        // Reset category mapping
+        this.categoryProviders = {};
+
+        // For each provider, check which categories it supports
+        Object.values(this.providers).forEach(provider => {
+            // Get provider's supported categories
+            provider.supportedCategories.forEach(category => {
+                // Map category to provider based on configuration
+                const configuredProvider = config.providers[category];
+                if (configuredProvider === provider.name) {
+                    this.categoryProviders[category] = provider;
+                    logger.info(`Mapped category ${category} to provider ${provider.name}`);
+                }
+            });
+        });
+
+        // Log categories without assigned providers
+        this.categories.forEach(category => {
+            if (!this.categoryProviders[category]) {
+                // Enhanced logging to help debug provider mapping issues
+                logger.warn(`No provider assigned for category: ${category}`, {
+                    configuredProvider: config.providers[category],
+                    availableProviders: Object.keys(this.providers).join(', '),
+                    categoryConfigValue: JSON.stringify(config.providers[category])
+                });
+            }
+        });
+
+        // Additional check for Oanda provider
+        if (this.providers['oanda']) {
+            logger.info('Oanda provider was successfully initialized', {
+                supportedCategories: this.providers['oanda'].supportedCategories,
+                initialized: this.providers['oanda'].initialized
+            });
+        } else {
+            logger.error('Oanda provider was not initialized correctly', {
+                providersInitialized: Object.keys(this.providers)
+            });
+        }
     }
 
     /**
