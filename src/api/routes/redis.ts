@@ -70,7 +70,7 @@ export function setupRedisRoutes(router: express.Router, redisService: RedisServ
     router.post(
         '/redis/clear/category/:category',
         [
-            param('category').isIn(['crypto', 'stocks', 'forex', 'indices', 'commodities'])
+            param('category').isIn(['crypto', 'stocks', 'forex', 'indices', 'commodities','metals'])
                 .withMessage('Invalid category. Must be one of: crypto, stocks, forex, indices, commodities'),
             handleValidationErrors
         ],

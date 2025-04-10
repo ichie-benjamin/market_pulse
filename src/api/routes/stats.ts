@@ -55,7 +55,7 @@ export function setupStatsRoutes(
     router.get(
         '/stats/:category',
         [
-            param('category').isIn(['crypto', 'stocks', 'forex', 'indices', 'commodities'])
+            param('category').isIn(['crypto', 'stocks', 'forex', 'indices', 'commodities','metals'])
                 .withMessage('Invalid category. Must be one of: crypto, stocks, forex, indices, commodities'),
             handleValidationErrors
         ],

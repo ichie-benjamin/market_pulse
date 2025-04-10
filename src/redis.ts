@@ -282,7 +282,7 @@ async function getAssetsBySymbols(symbols: string[]): Promise<Asset[]> {
  */
 async function getAllAssets(): Promise<Asset[]> {
     try {
-        const categories = ['crypto', 'stocks', 'forex', 'indices', 'commodities'];
+        const categories = ['crypto', 'stocks', 'forex', 'indices', 'commodities','metals'];
         const allAssets: Asset[] = [];
 
         for (const category of categories) {
@@ -527,7 +527,7 @@ async function getInfo(): Promise<any> {
         const info = await redisClient!.info();
 
         // Get key counts and memory usage
-        const keyCountPromises = ['crypto', 'stocks', 'forex', 'indices', 'commodities'].map(
+        const keyCountPromises = ['crypto', 'stocks', 'forex', 'indices', 'commodities','metals'].map(
             async category => {
                 const count = await redisClient!.scard(`${config.redis.keyPrefix}category:${category}`);
                 return { category, count: parseInt(count.toString(), 10) };

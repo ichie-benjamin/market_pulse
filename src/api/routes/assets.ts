@@ -221,7 +221,7 @@ export function setupAssetRoutes(
     router.post(
         '/refresh/:category',
         [
-            param('category').isIn(['crypto', 'stocks', 'forex', 'indices', 'commodities'])
+            param('category').isIn(['crypto', 'stocks', 'forex', 'indices', 'commodities','metals'])
                 .withMessage('Invalid category. Must be one of: crypto, stocks, forex, indices, commodities'),
             handleValidationErrors
         ],
@@ -286,7 +286,7 @@ export function setupAssetRoutes(
 
         res.json({
             success: true,
-            data: ['crypto', 'stocks', 'forex', 'indices', 'commodities']
+            data: ['crypto', 'stocks', 'forex', 'indices', 'commodities','metals']
         });
     });
 }

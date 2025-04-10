@@ -57,7 +57,7 @@ const assetSchema = Joi.object({
     id: Joi.string().required(),
     symbol: Joi.string().required(),
     name: Joi.string().required(),
-    category: Joi.string().valid('crypto', 'stocks', 'forex', 'indices', 'commodities').required(),
+    category: Joi.string().valid('crypto', 'stocks', 'forex', 'indices', 'commodities','metals').required(),
     price: Joi.number().required(),
     priceLow24h: Joi.number().optional(),
     priceHigh24h: Joi.number().optional(),
