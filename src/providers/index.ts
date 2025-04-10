@@ -356,7 +356,7 @@ class ProviderManager {
     /**
      * Fetch data from API and update Redis
      */
-    async fetchAndUpdateFromApi(provider: BaseProvider, category: AssetCategory): Promise<boolean> {
+    async fetchAndUpdateFromApiOld(provider: BaseProvider, category: AssetCategory): Promise<boolean> {
         try {
             logger.debug('Fetching data from API', {
                 provider: provider.name,
@@ -374,6 +374,63 @@ class ProviderManager {
                     error: result.error
                 });
                 return false;
+            }
+
+            const assets = result as Asset[];
+
+            if (assets.length === 0) {
+                logger.warn('No assets returned from API', {
+                    provider: provider.name,
+                    category
+                });
+                return false;
+            }
+
+            // Update Redis
+            await this.redis.updateAssets(assets);
+
+            logger.info('API data fetched and stored', {
+                provider: provider.name,
+                category,
+                assetCount: assets.length
+            });
+
+            return true;
+        } catch (error) {
+            logger.error('Error in API fetch and update cycle', {
+                error,
+                provider: provider.name,
+                category
+            });
+            return false;
+        }
+    }
+    async fetchAndUpdateFromApi(provider: BaseProvider, category: AssetCategory): Promise<boolean> {
+        try {
+            logger.debug('Fetching data from API', {
+                provider: provider.name,
+                category
+            });
+
+            // Add this line to check if the Oanda provider is being called
+            if (provider.name === 'oanda') {
+                logger.info(`OANDA PROVIDER BEING CALLED for category: ${category}`);
+            }
+
+            // Fetch data for category
+            const result = await provider.getAssetsByCategory(category);
+
+            // Check for Oanda-specific errors
+            if (provider.name === 'oanda') {
+                if ('success' in result && !result.success) {
+                    logger.error(`OANDA API ERROR for ${category}:`, {
+                        error: result.error
+                    });
+                } else {
+                    logger.info(`OANDA SUCCESS for ${category}`, {
+                        assetCount: Array.isArray(result) ? result.length : 'unknown'
+                    });
+                }
             }
 
             const assets = result as Asset[];
