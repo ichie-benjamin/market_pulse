@@ -110,7 +110,7 @@ export const config: Config = {
         financialmodelingprep: process.env.FINANCIALMODELINGPREP_CONNECTION_MODE || 'api',
         cexio: process.env.CEXIO_CONNECTION_MODE || 'ws',
         coincap: process.env.COINCAP_CONNECTION_MODE || 'ws',
-        oanda: process.env.COINCAP_CONNECTION_MODE || 'api',
+        oanda: process.env.OANDA_CONNECTION_MODE || 'api',
         alphavantage: process.env.ALPHAVANTAGE_CONNECTION_MODE || 'api',
         fixer: process.env.FIXER_CONNECTION_MODE || 'api'
     },

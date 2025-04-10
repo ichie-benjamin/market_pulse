@@ -65,53 +65,6 @@ class ProviderManager {
         }
     }
 
-    async initializeTest(): Promise<boolean> {
-        logger.info('Initializing provider manager');
-
-        logger.info('Provider configuration from config.ts:', {
-            cryptoProvider: config.providers.crypto,
-            stocksProvider: config.providers.stocks,
-            forexProvider: config.providers.forex,
-            indicesProvider: config.providers.indices,
-            commoditiesProvider: config.providers.commodities
-        });
-
-        logger.info('Initializing provider manager');
-
-        try {
-            // Clear any existing providers
-            this.providers = {};
-            this.categoryProviders = {};
-
-            // Initialize each provider and log the result
-            const providers = ['financialmodelingprep', 'cexio', 'oanda'];
-
-            for (const providerName of providers) {
-                logger.info(`Attempting to initialize provider: ${providerName}`);
-                const provider = await this.initializeProvider(providerName);
-                logger.info(`Provider ${providerName} initialization result:`, {
-                    success: !!provider,
-                    loaded: !!this.providers[providerName]
-                });
-            }
-
-            // After all initializations, log what we actually have
-            logger.info('Loaded providers:', {
-                availableProviders: Object.keys(this.providers)
-            });
-
-            // Map providers to categories
-            this.mapProvidersToCategories();
-
-            logger.info('Final category to provider mapping:');
-
-            return true;
-        } catch (error) {
-            logger.error('Failed to initialize provider manager', { error });
-            throw error;
-        }
-    }
-
     /**
      * Initialize a specific provider
      */
