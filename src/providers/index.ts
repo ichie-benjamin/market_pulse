@@ -407,7 +407,7 @@ class ProviderManager {
     }
     async fetchAndUpdateFromApi(provider: BaseProvider, category: AssetCategory): Promise<boolean> {
         try {
-            logger.debug('Fetching data from API', {
+            logger.info('Fetching data from API', {
                 provider: provider.name,
                 category
             });
