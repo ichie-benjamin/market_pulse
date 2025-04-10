@@ -24,6 +24,7 @@ async function startServer(): Promise<AppComponents> {
         // Initialize Redis
         logger.info('Initializing Redis service...');
         const redisService = await initRedisService();
+
         logger.info('Redis service initialized successfully');
 
         // Initialize provider manager
