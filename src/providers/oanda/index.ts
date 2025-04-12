@@ -89,11 +89,6 @@ class OandaProvider extends BaseProvider {
             instruments: instruments.join(',')
         };
 
-        this.logger.debug('Making Oanda API request', {
-            url,
-            instruments
-        });
-
         try {
             const response = await axios.get(url, {
                 params,
@@ -103,7 +98,7 @@ class OandaProvider extends BaseProvider {
                 }
             });
 
-            this.logger.debug('Oanda API request successful', {
+            this.logger.info('Oanda API request successful', {
                 status: response.status,
                 instrumentCount: response.data?.prices?.length || 0
             });
@@ -174,6 +169,7 @@ class OandaProvider extends BaseProvider {
 
             // Convert each asset name to Oanda format
             const oandaInstruments = allowedAssets.map(asset => formatOandaSymbol(asset.name));
+
 
             // Make API request for these instruments
             const response = await this.makeApiRequest(oandaInstruments);
@@ -252,22 +248,20 @@ class OandaProvider extends BaseProvider {
             return [];
         }
 
+
         const assets: Asset[] = [];
 
         try {
             for (const priceItem of data.prices) {
                 try {
                     // Skip non-tradeable instruments
-                    if (!priceItem.tradeable) {
-                        this.logger.debug('Skipping non-tradeable instrument', {
-                            instrument: priceItem.instrument
-                        });
-                        continue;
-                    }
+                    // if (!priceItem.tradeable) {
+                    //     this.logger.info('Skipping non-tradeable instrument', {
+                    //         instrument: priceItem.instrument
+                    //     });
+                    //     continue;
+                    // }
 
-                    // Get the original symbol from the Oanda instrument
-                    // This is a reverse of formatOandaSymbol
-                    const originalSymbol = priceItem.instrument.replace('_', '');
 
                     // Determine which category this symbol belongs to
                     let assetCategory = defaultCategory;
