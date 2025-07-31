@@ -144,6 +144,8 @@ export const ALLOWED_ASSETS: Record<AssetCategory, AllowedAsset[]> = {
     ],
 
     forex: [
+        { name: "EURUSD", displayName: "EUR/USD", tv_sym: "FX_IDC:EURUSD" },
+        { name: "GBPUSD", displayName: "GBP/USD", tv_sym: "FX_IDC:GBPUSD" },
         { name: "GBPCHF", displayName: "GBP/CHF", tv_sym: "FX_IDC:GBPCHF" },
         { name: "EURNOK", displayName: "EUR/NOK", tv_sym: "FX_IDC:EURNOK" },
         { name: "AUDJPY", displayName: "AUD/JPY", tv_sym: "FX_IDC:AUDJPY" },
