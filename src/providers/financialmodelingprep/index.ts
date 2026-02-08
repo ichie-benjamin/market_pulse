@@ -1,10 +1,10 @@
-import axios, {AxiosResponse} from 'axios';
+import axios, { AxiosResponse } from 'axios';
 import CircuitBreaker from 'opossum';
-import {BaseProvider, ErrorResponse} from '../base';
-import {Asset, AssetAdditionalData, AssetCategory, createAsset, validateAsset} from '../../models';
-import {API_ENDPOINTS, SUPPORTED_CATEGORIES} from './constants';
+import { BaseProvider, ErrorResponse } from '../base';
+import { Asset, AssetAdditionalData, AssetCategory, createAsset, validateAsset } from '../../models';
+import { API_ENDPOINTS, SUPPORTED_CATEGORIES } from './constants';
 
-import {ALLOWED_ASSETS, getAllAllowedAssets} from '../../constants';
+import { ALLOWED_ASSETS, getAllAllowedAssets } from '../../constants';
 
 // FMP API response interfaces
 interface FMPQuote {
@@ -39,7 +39,7 @@ class FinancialModelingPrepProvider extends BaseProvider {
 
     constructor(apiKey?: string) {
         super('financialmodelingprep', SUPPORTED_CATEGORIES, apiKey);
-        this.baseUrl = 'https://financialmodelingprep.com/api/v3';
+        this.baseUrl = 'https://financialmodelingprep.com';
 
         // Set up circuit breaker for API calls
         this.circuitBreaker = new CircuitBreaker(this.makeApiRequest.bind(this), {
@@ -75,7 +75,7 @@ class FinancialModelingPrepProvider extends BaseProvider {
 
         // Test connection with a sample API call
         try {
-            await this.circuitBreaker.fire('/quote/AAPL', { apikey: this.apiKey });
+            await this.circuitBreaker.fire('/stable/batch-quote', { symbols: 'AAPL' });
             this.initialized = true;
             this.logger.info('FMP provider initialized successfully');
         } catch (error) {
@@ -111,6 +111,11 @@ class FinancialModelingPrepProvider extends BaseProvider {
                 duration,
                 status: response.status
             });
+
+            // Check for error message in 200 OK response (FMP sometimes does this)
+            if (response.data && typeof response.data === 'object' && 'Error Message' in response.data) {
+                throw new Error(`API Error: ${response.data['Error Message']}`);
+            }
 
             return response.data;
         } catch (error) {
@@ -153,10 +158,9 @@ class FinancialModelingPrepProvider extends BaseProvider {
 
             // Process each chunk
             for (const chunk of chunks) {
-                const symbolsParam = chunk.join(',');
-                const endpoint = `${API_ENDPOINTS.quote}${symbolsParam}`;
 
-                const response = await this.circuitBreaker.fire(endpoint);
+                // Pass symbols as query param
+                const response = await this.circuitBreaker.fire(API_ENDPOINTS.quote, { symbols: chunk.join(',') });
 
                 if (!response) {
                     continue;
@@ -204,10 +208,8 @@ class FinancialModelingPrepProvider extends BaseProvider {
             // Create comma-separated list of symbols
             const symbolsParam = allowedAssets.join(',');
 
-            // Use the quote endpoint directly with all symbols
-            const endpoint = `${API_ENDPOINTS.quote}${symbolsParam}`;
-
-            const response = await this.circuitBreaker.fire(endpoint);
+            // Use quote endpoint with query param
+            const response = await this.circuitBreaker.fire(API_ENDPOINTS.quote, { symbols: symbolsParam });
 
             if (!response) {
                 return [];
@@ -251,9 +253,9 @@ class FinancialModelingPrepProvider extends BaseProvider {
 
             // Get data for filtered symbols
             const symbolsParam = filteredSymbols.join(',');
-            const endpoint = `${API_ENDPOINTS.quote}${symbolsParam}`;
 
-            const response = await this.circuitBreaker.fire(endpoint);
+            // Use quote endpoint with query param
+            const response = await this.circuitBreaker.fire(API_ENDPOINTS.quote, { symbols: symbolsParam });
 
             if (!response) {
                 return [];
@@ -282,6 +284,7 @@ class FinancialModelingPrepProvider extends BaseProvider {
      */
     transform(data: FMPQuote[], category?: AssetCategory): Asset[] {
         if (!data || !Array.isArray(data) || data.length === 0) {
+            this.logger.debug('Transform received empty or invalid data', { data });
             return [];
         }
 

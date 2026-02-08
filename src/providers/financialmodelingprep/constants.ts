@@ -15,10 +15,10 @@ export const SUPPORTED_CATEGORIES: AssetCategory[] = [
  * API endpoints for Financial Modeling Prep
  */
 export const API_ENDPOINTS = {
-    quote: '/quote/',
-    cryptoQuote: '/quote',
-    stocksQuote: '/quote',
-    forexQuote: '/quote',
-    indicesQuote: '/quote',
-    commoditiesQuote: '/quote'
+    quote: '/stable/batch-quote',
+    cryptoQuote: '/stable/batch-quote',
+    stocksQuote: '/stable/batch-quote',
+    forexQuote: '/stable/batch-quote',
+    indicesQuote: '/stable/batch-quote',
+    commoditiesQuote: '/stable/batch-quote'
 };

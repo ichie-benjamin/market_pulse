@@ -6,8 +6,8 @@ import { AssetCategory } from '../../models';
 export const SUPPORTED_CATEGORIES: AssetCategory[] = [
     'commodities',
     'indices',
-    'metals'
-    // Metals are included in the commodities category
+    'metals',
+    'forex'
 ];
 
 /**
