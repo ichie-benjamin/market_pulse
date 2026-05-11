@@ -97,12 +97,12 @@ export const config: Config = {
 
     // Provider configuration
     providers: {
-        crypto: process.env.CRYPTO_PROVIDER || 'cexio', // Default to CEX.IO for crypto
-        stocks: process.env.STOCKS_PROVIDER || 'financialmodelingprep',
-        forex: process.env.FOREX_PROVIDER || 'financialmodelingprep',
-        indices: process.env.INDICES_PROVIDER || 'oanda',
-        commodities: process.env.COMMODITIES_PROVIDER || 'oanda',
-        metals: process.env.METALS_PROVIDER || 'oanda',
+        crypto: process.env.CRYPTO_PROVIDER || 'twelvedata',
+        stocks: process.env.STOCKS_PROVIDER || 'twelvedata',
+        forex: process.env.FOREX_PROVIDER || 'twelvedata',
+        indices: process.env.INDICES_PROVIDER || 'twelvedata',
+        commodities: process.env.COMMODITIES_PROVIDER || 'twelvedata',
+        metals: process.env.METALS_PROVIDER || 'twelvedata',
     },
 
     // Provider connection modes
@@ -112,7 +112,8 @@ export const config: Config = {
         coincap: process.env.COINCAP_CONNECTION_MODE || 'ws',
         oanda: process.env.OANDA_CONNECTION_MODE || 'api',
         alphavantage: process.env.ALPHAVANTAGE_CONNECTION_MODE || 'api',
-        fixer: process.env.FIXER_CONNECTION_MODE || 'api'
+        fixer: process.env.FIXER_CONNECTION_MODE || 'api',
+        twelvedata: process.env.TWELVEDATA_CONNECTION_MODE || 'api'
     },
 
     // Provider API keys
@@ -123,6 +124,7 @@ export const config: Config = {
         alphavantage: process.env.ALPHAVANTAGE_API_KEY,
         fixer: process.env.FIXER_API_KEY,
         oanda: process.env.OANDA_API_KEY,
+        twelvedata: process.env.TWELVEDATA_API_KEY,
     },
 
     // Update intervals for API polling (in milliseconds)

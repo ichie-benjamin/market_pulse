@@ -9,6 +9,7 @@ import {BaseProvider} from './base';
 import FinancialModelingPrepProvider from './financialmodelingprep';
 import CexioProvider from './cexio';
 import OandaProvider from "./oanda";
+import TwelvedataProvider from './twelvedata';
 
 const logger: Logger = createLogger('provider-manager');
 
@@ -46,6 +47,7 @@ class ProviderManager {
             await this.initializeProvider('financialmodelingprep');
             await this.initializeProvider('cexio');
             await this.initializeProvider('oanda');
+            await this.initializeProvider('twelvedata');
             // Add other providers as needed
 
             // Map providers to categories
@@ -88,6 +90,14 @@ class ProviderManager {
                     break;
                 case 'oanda':
                     provider = new OandaProvider(config.apiKeys.oanda);
+                    break;
+                case 'twelvedata':
+                    provider = new TwelvedataProvider(config.apiKeys.twelvedata);
+
+                    const twelvedataProvider = provider;
+                    twelvedataProvider.addEventListener('data', (assets: Asset[]) => {
+                        this.handleWebSocketData(twelvedataProvider, assets);
+                    });
                     break;
 
                 // Add other providers here as they're implemented

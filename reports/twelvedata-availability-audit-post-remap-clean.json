@@ -1,0 +1,46 @@
+{
+  "generatedAt": "2026-05-10T14:48:56.327Z",
+  "uniqueWireSymbols": 209,
+  "successfulWireSymbols": 209,
+  "failedWireSymbols": 0,
+  "summary": {
+    "crypto": {
+      "total": 35,
+      "available": 35,
+      "missing": 0
+    },
+    "stocks": {
+      "total": 87,
+      "available": 87,
+      "missing": 0
+    },
+    "forex": {
+      "total": 38,
+      "available": 38,
+      "missing": 0
+    },
+    "indices": {
+      "total": 18,
+      "available": 18,
+      "missing": 0
+    },
+    "commodities": {
+      "total": 31,
+      "available": 31,
+      "missing": 0
+    },
+    "metals": {
+      "total": 24,
+      "available": 24,
+      "missing": 0
+    }
+  },
+  "missingByCategory": {
+    "crypto": [],
+    "stocks": [],
+    "forex": [],
+    "indices": [],
+    "commodities": [],
+    "metals": []
+  }
+}
