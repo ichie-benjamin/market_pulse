@@ -34,3 +34,6 @@ Thumbs.db
 
 # Testing
 coverage/
+
+# Generated reports
+reports/*.json
