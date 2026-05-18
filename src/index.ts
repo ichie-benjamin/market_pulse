@@ -6,6 +6,7 @@ import { setupWebSocketServer } from './websocket';
 import { initRedisService, RedisService } from './redis';
 import ProviderManager from './providers';
 import { config } from './config';
+import { initializeAssetRegistry } from './asset-registry';
 
 interface AppComponents {
     server: http.Server;
@@ -26,6 +27,10 @@ async function startServer(): Promise<AppComponents> {
         const redisService = await initRedisService();
 
         logger.info('Redis service initialized successfully');
+
+        logger.info('Initializing asset registry...');
+        await initializeAssetRegistry();
+        logger.info('Asset registry initialized successfully');
 
         // Initialize provider manager
         logger.info('Initializing provider manager...');

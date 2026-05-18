@@ -1,9 +1,17 @@
 import express, { Request, Response } from 'express';
-import { query, param, validationResult } from 'express-validator';
+import { body, query, param, validationResult } from 'express-validator';
 import { createLogger } from '../../logging';
 import { RedisService } from '../../redis';
 import ProviderManager from '../../providers';
 import { AssetCategory } from '../../models';
+import {
+    addAssetToRegistry,
+    getAssetRegistryView,
+    isValidCategory,
+    removeAssetFromRegistry,
+    updateAssetInRegistry,
+    validateAssetWithTwelveData
+} from '../../asset-registry';
 
 const logger = createLogger('assets-api');
 
@@ -29,6 +37,8 @@ export function setupAssetRoutes(
         }
         next();
     };
+
+    const categoryList = ['crypto', 'stocks', 'forex', 'indices', 'commodities', 'metals'];
 
     // Get all assets
     router.get('/assets', async (req: Request, res: Response) => {
@@ -60,8 +70,8 @@ export function setupAssetRoutes(
     router.get(
         '/assets/:category',
         [
-            param('category').isIn(['crypto', 'stocks', 'forex', 'indices', 'commodities'])
-                .withMessage('Invalid category. Must be one of: crypto, stocks, forex, indices, commodities'),
+            param('category').isIn(categoryList)
+                .withMessage('Invalid category. Must be one of: crypto, stocks, forex, indices, commodities, metals'),
             handleValidationErrors
         ],
         async (req: Request, res: Response) => {
@@ -221,8 +231,8 @@ export function setupAssetRoutes(
     router.post(
         '/refresh/:category',
         [
-            param('category').isIn(['crypto', 'stocks', 'forex', 'indices', 'commodities','metals'])
-                .withMessage('Invalid category. Must be one of: crypto, stocks, forex, indices, commodities'),
+            param('category').isIn(categoryList)
+                .withMessage('Invalid category. Must be one of: crypto, stocks, forex, indices, commodities, metals'),
             handleValidationErrors
         ],
         async (req: Request, res: Response) => {
@@ -286,7 +296,336 @@ export function setupAssetRoutes(
 
         res.json({
             success: true,
-            data: ['crypto', 'stocks', 'forex', 'indices', 'commodities','metals']
+            data: categoryList
+        });
+    });
+
+    // Admin: list registry-managed assets (effective/custom/removed/overrides)
+    router.get(
+        '/admin/assets',
+        [
+            query('category').optional().isIn(categoryList)
+                .withMessage('Invalid category'),
+            handleValidationErrors
+        ],
+        async (req: Request, res: Response) => {
+            try {
+                const category = req.query.category as AssetCategory | undefined;
+                const data = category ? getAssetRegistryView(category) : getAssetRegistryView();
+
+                res.json({
+                    success: true,
+                    data
+                })
+            } catch (error) {
+                logger.error('Error listing admin asset registry', { error })
+                res.status(500).json({
+                    success: false,
+                    error: 'Failed to list asset registry'
+                })
+            }
+        }
+    )
+
+    // Admin: validate a symbol against Twelvedata
+    router.post(
+        '/admin/assets/validate',
+        [
+            body('category').isIn(categoryList)
+                .withMessage('Invalid category'),
+            body('symbol').isString().notEmpty()
+                .withMessage('symbol is required'),
+            handleValidationErrors
+        ],
+        async (req: Request, res: Response) => {
+            try {
+                const category = req.body.category as AssetCategory
+                const symbol = String(req.body.symbol)
+                const result = await validateAssetWithTwelveData({ category, symbol })
+
+                res.json({
+                    success: true,
+                    data: result
+                })
+            } catch (error) {
+                logger.error('Error validating admin asset symbol', {
+                    error,
+                    body: req.body
+                })
+                res.status(500).json({
+                    success: false,
+                    error: 'Failed to validate asset symbol'
+                })
+            }
+        }
+    )
+
+    // Admin: add a custom asset to allowed list
+    router.post(
+        '/admin/assets',
+        [
+            body('category').isIn(categoryList)
+                .withMessage('Invalid category'),
+            body('symbol').isString().notEmpty()
+                .withMessage('symbol is required'),
+            body('displayName').optional({ nullable: true }).isString()
+                .withMessage('displayName must be a string'),
+            body('tv_sym').optional({ nullable: true }).isString()
+                .withMessage('tv_sym must be a string'),
+            body('validateWithProvider').optional().isBoolean()
+                .withMessage('validateWithProvider must be boolean'),
+            body('refresh').optional().isBoolean()
+                .withMessage('refresh must be boolean'),
+            handleValidationErrors
+        ],
+        async (req: Request, res: Response) => {
+            try {
+                const category = req.body.category as AssetCategory
+                const symbol = String(req.body.symbol)
+                const validateWithProvider = req.body.validateWithProvider !== false
+                const refresh = req.body.refresh !== false
+
+                let validation: any = null
+                if (validateWithProvider) {
+                    validation = await validateAssetWithTwelveData({ category, symbol })
+                    if (!validation.available) {
+                        return res.status(400).json({
+                            success: false,
+                            error: 'Symbol validation failed on Twelvedata',
+                            validation
+                        })
+                    }
+                }
+
+                const asset = await addAssetToRegistry({
+                    category,
+                    symbol,
+                    displayName: req.body.displayName,
+                    tv_sym: req.body.tv_sym
+                })
+
+                let refreshed = false
+                if (refresh) {
+                    refreshed = await providerManager.refreshCategory(category)
+                }
+
+                res.status(201).json({
+                    success: true,
+                    message: 'Asset added successfully',
+                    refreshed,
+                    data: asset,
+                    validation
+                })
+            } catch (error: any) {
+                logger.error('Error adding admin asset', {
+                    error,
+                    body: req.body
+                })
+
+                res.status(400).json({
+                    success: false,
+                    error: error?.message || 'Failed to add asset'
+                })
+            }
+        }
+    )
+
+    // Admin: edit an existing custom asset or override default metadata
+    router.put(
+        '/admin/assets/:category/:symbol',
+        [
+            param('category').isIn(categoryList)
+                .withMessage('Invalid category'),
+            param('symbol').isString().notEmpty()
+                .withMessage('symbol is required'),
+            body('newSymbol').optional().isString()
+                .withMessage('newSymbol must be a string'),
+            body('displayName').optional({ nullable: true }).isString()
+                .withMessage('displayName must be a string'),
+            body('tv_sym').optional({ nullable: true }).isString()
+                .withMessage('tv_sym must be a string'),
+            body('validateWithProvider').optional().isBoolean()
+                .withMessage('validateWithProvider must be boolean'),
+            body('refresh').optional().isBoolean()
+                .withMessage('refresh must be boolean'),
+            handleValidationErrors
+        ],
+        async (req: Request, res: Response) => {
+            try {
+                const category = req.params.category as AssetCategory
+                const symbol = req.params.symbol
+                const validateWithProvider = req.body.validateWithProvider === true
+                const refresh = req.body.refresh !== false
+                const targetSymbol = req.body.newSymbol || symbol
+
+                let validation: any = null
+                if (validateWithProvider) {
+                    validation = await validateAssetWithTwelveData({ category, symbol: targetSymbol })
+                    if (!validation.available) {
+                        return res.status(400).json({
+                            success: false,
+                            error: 'Symbol validation failed on Twelvedata',
+                            validation
+                        })
+                    }
+                }
+
+                const result = await updateAssetInRegistry({
+                    category,
+                    symbol,
+                    newSymbol: req.body.newSymbol,
+                    displayName: req.body.displayName,
+                    tv_sym: req.body.tv_sym
+                })
+
+                let refreshed = false
+                if (refresh) {
+                    refreshed = await providerManager.refreshCategory(category)
+                }
+
+                res.json({
+                    success: true,
+                    message: 'Asset updated successfully',
+                    refreshed,
+                    source: result.source,
+                    data: result.updated,
+                    validation
+                })
+            } catch (error: any) {
+                logger.error('Error updating admin asset', {
+                    error,
+                    params: req.params,
+                    body: req.body
+                })
+
+                res.status(400).json({
+                    success: false,
+                    error: error?.message || 'Failed to update asset'
+                })
+            }
+        }
+    )
+
+    // Admin: remove an asset (custom removal or default hide)
+    router.delete(
+        '/admin/assets/:category/:symbol',
+        [
+            param('category').isIn(categoryList)
+                .withMessage('Invalid category'),
+            param('symbol').isString().notEmpty()
+                .withMessage('symbol is required'),
+            query('refresh').optional().isBoolean()
+                .withMessage('refresh must be boolean'),
+            handleValidationErrors
+        ],
+        async (req: Request, res: Response) => {
+            try {
+                const category = req.params.category
+                const symbol = req.params.symbol
+
+                if (!isValidCategory(category)) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Invalid category'
+                    })
+                }
+
+                const removed = await removeAssetFromRegistry({
+                    category,
+                    symbol
+                })
+
+                let refreshed = false
+                const refresh = req.query.refresh !== 'false'
+                if (refresh) {
+                    refreshed = await providerManager.refreshCategory(category)
+                }
+
+                res.json({
+                    success: true,
+                    message: removed.source === 'none'
+                        ? 'Asset was not found in registry'
+                        : 'Asset removed successfully',
+                    refreshed,
+                    data: removed
+                })
+            } catch (error: any) {
+                logger.error('Error removing admin asset', {
+                    error,
+                    params: req.params
+                })
+                res.status(400).json({
+                    success: false,
+                    error: error?.message || 'Failed to remove asset'
+                })
+            }
+        }
+    )
+
+    // Admin: validate then add in one request (strict onboarding helper)
+    router.post(
+        '/admin/assets/onboard',
+        [
+            body('category').isIn(categoryList)
+                .withMessage('Invalid category'),
+            body('symbol').isString().notEmpty()
+                .withMessage('symbol is required'),
+            body('displayName').optional({ nullable: true }).isString(),
+            body('tv_sym').optional({ nullable: true }).isString(),
+            body('refresh').optional().isBoolean(),
+            handleValidationErrors
+        ],
+        async (req: Request, res: Response) => {
+            try {
+                const category = req.body.category as AssetCategory
+                const symbol = String(req.body.symbol)
+
+                const validation = await validateAssetWithTwelveData({ category, symbol })
+                if (!validation.available) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Symbol validation failed on Twelvedata',
+                        validation
+                    })
+                }
+
+                const added = await addAssetToRegistry({
+                    category,
+                    symbol,
+                    displayName: req.body.displayName,
+                    tv_sym: req.body.tv_sym
+                })
+
+                const refresh = req.body.refresh !== false
+                let refreshed = false
+                if (refresh) {
+                    refreshed = await providerManager.refreshCategory(category)
+                }
+
+                res.status(201).json({
+                    success: true,
+                    message: 'Asset validated and added successfully',
+                    refreshed,
+                    data: added,
+                    validation
+                })
+            } catch (error: any) {
+                logger.error('Error onboarding admin asset', {
+                    error,
+                    body: req.body
+                })
+                res.status(400).json({
+                    success: false,
+                    error: error?.message || 'Failed to onboard asset'
+                })
+            }
+        }
+    )
+    
+    router.get('/admin/assets/categories', (req: Request, res: Response) => {
+        res.json({
+            success: true,
+            data: categoryList
         });
     });
 }
