@@ -87,49 +87,16 @@ export const INDEX_SYMBOL_MAP: Record<string, string> = {
 };
 
 /**
- * Per-category symbol overrides for assets that do not have an exact
- * Twelvedata equivalent. These mappings point to the closest available
- * and quotable instrument on Twelvedata.
+ * Per-category symbol overrides for exact Twelvedata aliases.
+ *
+ * These must only be used when Twelvedata exposes the same underlying
+ * instrument under a different symbol. Proxy ETFs, different quote
+ * currencies, or substitute instruments must not be mapped here.
  */
 const SYMBOL_OVERRIDES: Partial<Record<AssetCategory, Record<string, string>>> = {
-    crypto: {
-        EOSUSD: 'EOS/EUR',
-        MKRUSD: 'MKR/INR'
-    },
-    stocks: {
-        TWTR: 'META'
-    },
-    indices: {
-        US30_USD: 'DIA',
-        JP225Y_JPY: 'EWJ',
-        JP225_USD: 'DXJ',
-        CN50_USD: 'ASHR',
-        EU50_EUR: 'FEZ',
-        HK33_HKD: 'EWH',
-        US2000_USD: 'IWM',
-        CHINAH_HKD: 'FXI',
-        AU200_AUD: 'EWA'
-    },
     commodities: {
-        XAG_HKD: 'XAG/TRY',
         WTICO_USD: 'WTI/USD',
-        XAG_NZD: 'XAGG/USD',
-        XAG_JPY: 'XAGG/EUR',
-        BCO_USD: 'XBR/USD',
-        XCU_USD: 'CPER',
-        NATGAS_USD: 'UNG',
-        CORN_USD: 'CORN',
-        SOYBN_USD: 'SOYB',
-        XAG_SGD: 'XAGG/TRY',
-        WHEAT_USD: 'WEAT',
-        SUGAR_USD: 'CANE'
-    },
-    metals: {
-        XAG_HKD: 'XAG/TRY',
-        XAG_NZD: 'XAGG/USD',
-        XAG_JPY: 'XAGG/EUR',
-        XCU_USD: 'CPER',
-        XAG_SGD: 'XAGG/TRY'
+        BCO_USD: 'XBR/USD'
     }
 };
 
@@ -198,6 +165,7 @@ export function mapToTwelvedataSymbol(
 
     if (SLASHED_CATEGORIES.has(category)) {
         if (symbol.includes('/')) return symbol;
+        if (symbol.includes('_')) return symbol.replace('_', '/');
         if (symbol.length > 3) {
             const base = symbol.slice(0, symbol.length - 3);
             const quote = symbol.slice(-3);
@@ -231,6 +199,7 @@ export function mapFromTwelvedataSymbol(
     }
 
     if (SLASHED_CATEGORIES.has(category)) {
+        if (symbol.includes('_')) return symbol.replace('_', '');
         return symbol.replace('/', '');
     }
 

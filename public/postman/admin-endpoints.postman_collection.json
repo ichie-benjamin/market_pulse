@@ -1,0 +1,430 @@
+{
+  "info": {
+    "_postman_id": "5d1224fa-a56f-4449-9f20-18eff9244d9f",
+    "name": "Market Data Service - Admin Endpoints",
+    "description": "Postman collection for the admin and operational endpoints in the Market Data Service API. All requests target authenticated `/api` routes and use the `x-api-key` header by default.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "x-api-key",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{apiKey}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "apiKey",
+      "value": "replace-with-valid-api-key"
+    },
+    {
+      "key": "category",
+      "value": "crypto"
+    },
+    {
+      "key": "symbol",
+      "value": "BTCUSD"
+    },
+    {
+      "key": "assetId",
+      "value": "crypto-btcusd"
+    }
+  ],
+  "item": [
+    {
+      "name": "Refresh",
+      "description": "Administrative refresh operations for market data providers.",
+      "item": [
+        {
+          "name": "Refresh All Categories",
+          "request": {
+            "method": "POST",
+            "description": "Triggers `providerManager.refreshAll()` and returns a per-category result payload.",
+            "url": {
+              "raw": "{{baseUrl}}/api/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "refresh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Refresh Category",
+          "request": {
+            "method": "POST",
+            "description": "Triggers a refresh for a single category. Valid categories: `crypto`, `stocks`, `forex`, `indices`, `commodities`, `metals`.",
+            "url": {
+              "raw": "{{baseUrl}}/api/refresh/{{category}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "refresh",
+                "{{category}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Assets",
+      "description": "Registry-management endpoints under `/api/admin/assets`.",
+      "item": [
+        {
+          "name": "List Registry Assets",
+          "request": {
+            "method": "GET",
+            "description": "Returns the effective registry view. Optional `category` query narrows the response to a single asset category.",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/assets?category={{category}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "assets"
+              ],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "{{category}}",
+                  "description": "Optional. One of crypto, stocks, forex, indices, commodities, metals."
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Admin Categories",
+          "request": {
+            "method": "GET",
+            "description": "Returns the category list accepted by the admin asset routes.",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/assets/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "assets",
+                "categories"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Validate Asset Symbol",
+          "request": {
+            "method": "POST",
+            "description": "Validates a candidate symbol against TwelveData without writing to the registry.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"crypto\",\n  \"symbol\": \"BTCUSD\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/assets/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "assets",
+                "validate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Add Registry Asset",
+          "request": {
+            "method": "POST",
+            "description": "Adds a custom asset to the registry. By default it validates with the provider and refreshes the category unless `validateWithProvider` or `refresh` are set to `false`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"crypto\",\n  \"symbol\": \"BTCUSD\",\n  \"displayName\": \"Bitcoin / US Dollar\",\n  \"tv_sym\": \"BITSTAMP:BTCUSD\",\n  \"validateWithProvider\": true,\n  \"refresh\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/assets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "assets"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Registry Asset",
+          "request": {
+            "method": "PUT",
+            "description": "Updates a custom asset or overrides default metadata. Set `validateWithProvider` to `true` if the new target symbol should be revalidated before saving.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newSymbol\": \"BTCUSD\",\n  \"displayName\": \"Bitcoin / US Dollar\",\n  \"tv_sym\": \"BITSTAMP:BTCUSD\",\n  \"validateWithProvider\": false,\n  \"refresh\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/assets/{{category}}/{{symbol}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "assets",
+                "{{category}}",
+                "{{symbol}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Registry Asset",
+          "request": {
+            "method": "DELETE",
+            "description": "Removes a custom asset or hides a default one. Optional `refresh=false` skips the provider refresh after deletion.",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/assets/{{category}}/{{symbol}}?refresh=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "assets",
+                "{{category}}",
+                "{{symbol}}"
+              ],
+              "query": [
+                {
+                  "key": "refresh",
+                  "value": "true",
+                  "description": "Optional. Set to false to skip a provider refresh."
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Onboard Asset",
+          "request": {
+            "method": "POST",
+            "description": "Strict helper that validates with TwelveData and, if validation succeeds, adds the asset and optionally refreshes the category.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"crypto\",\n  \"symbol\": \"BTCUSD\",\n  \"displayName\": \"Bitcoin / US Dollar\",\n  \"tv_sym\": \"BITSTAMP:BTCUSD\",\n  \"refresh\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/assets/onboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "assets",
+                "onboard"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Redis Admin",
+      "description": "Operational Redis management endpoints.",
+      "item": [
+        {
+          "name": "Get Redis Info",
+          "request": {
+            "method": "GET",
+            "description": "Returns Redis diagnostic information from `redisService.getInfo()`.",
+            "url": {
+              "raw": "{{baseUrl}}/api/redis/info",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "redis",
+                "info"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Clear All Redis Data",
+          "request": {
+            "method": "POST",
+            "description": "Clears all cached market data from Redis.",
+            "url": {
+              "raw": "{{baseUrl}}/api/redis/clear",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "redis",
+                "clear"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Clear Redis Category",
+          "request": {
+            "method": "POST",
+            "description": "Clears cached data for one category.",
+            "url": {
+              "raw": "{{baseUrl}}/api/redis/clear/category/{{category}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "redis",
+                "clear",
+                "category",
+                "{{category}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Clear Redis Asset By ID",
+          "request": {
+            "method": "POST",
+            "description": "Clears one cached asset by its internal asset id, for example `crypto-btcusd`.",
+            "url": {
+              "raw": "{{baseUrl}}/api/redis/clear/asset/{{assetId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "redis",
+                "clear",
+                "asset",
+                "{{assetId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Clear Redis Asset By Symbol",
+          "request": {
+            "method": "POST",
+            "description": "Clears one cached asset by symbol. The route uppercases the symbol before clearing.",
+            "url": {
+              "raw": "{{baseUrl}}/api/redis/clear/symbol/{{symbol}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "redis",
+                "clear",
+                "symbol",
+                "{{symbol}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "System Admin",
+      "description": "Operational system inspection endpoints.",
+      "item": [
+        {
+          "name": "Get System Status",
+          "request": {
+            "method": "GET",
+            "description": "Returns runtime status details including process uptime, memory usage, provider status, and basic app flags.",
+            "url": {
+              "raw": "{{baseUrl}}/api/system/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "system",
+                "status"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get System Config",
+          "request": {
+            "method": "GET",
+            "description": "Returns sanitized application configuration, excluding sensitive auth secrets while exposing runtime configuration values.",
+            "url": {
+              "raw": "{{baseUrl}}/api/system/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "system",
+                "config"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

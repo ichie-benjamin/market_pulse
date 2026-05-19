@@ -7,6 +7,7 @@ import { AssetCategory } from '../../models';
 import {
     addAssetToRegistry,
     getAssetRegistryView,
+    getAssetRegistryViewWithTwelveDataValidation,
     isValidCategory,
     removeAssetFromRegistry,
     updateAssetInRegistry,
@@ -306,12 +307,22 @@ export function setupAssetRoutes(
         [
             query('category').optional().isIn(categoryList)
                 .withMessage('Invalid category'),
+            query('validateWithProvider').optional().isBoolean()
+                .withMessage('validateWithProvider must be boolean'),
+            query('onlyAvailable').optional().isBoolean()
+                .withMessage('onlyAvailable must be boolean'),
             handleValidationErrors
         ],
         async (req: Request, res: Response) => {
             try {
                 const category = req.query.category as AssetCategory | undefined;
-                const data = category ? getAssetRegistryView(category) : getAssetRegistryView();
+                const validateWithProvider = req.query.validateWithProvider === 'true'
+                const onlyAvailable = req.query.onlyAvailable === 'true'
+                const data = validateWithProvider
+                    ? await getAssetRegistryViewWithTwelveDataValidation({ category, onlyAvailable })
+                    : category
+                        ? getAssetRegistryView(category)
+                        : getAssetRegistryView()
 
                 res.json({
                     success: true,

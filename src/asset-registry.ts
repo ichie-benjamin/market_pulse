@@ -34,6 +34,33 @@ export interface AssetRegistryView {
     categories: Record<AssetCategory, AssetRegistryCategoryView>
 }
 
+export interface ProviderValidatedAssetView {
+    symbol: string
+    displayName: string | null
+    wireSymbol: string | null
+    available: boolean
+    providerSymbol?: string
+    providerName?: string
+    price?: number
+    reason?: string
+}
+
+export interface AssetRegistryCategoryProviderValidation {
+    provider: 'twelvedata'
+    validatedAt: string
+    availableCount: number
+    unavailableCount: number
+    assets: ProviderValidatedAssetView[]
+}
+
+export interface AssetRegistryCategoryViewWithProviderValidation extends AssetRegistryCategoryView {
+    providerValidation: AssetRegistryCategoryProviderValidation
+}
+
+export interface AssetRegistryViewWithProviderValidation {
+    categories: Record<AssetCategory, AssetRegistryCategoryViewWithProviderValidation>
+}
+
 export interface ValidateAssetResult {
     provider: 'twelvedata'
     category: AssetCategory
@@ -81,6 +108,16 @@ function normalizeNullableString(value: unknown): string | null {
 
     const cleaned = value.trim()
     return cleaned.length > 0 ? cleaned : null
+}
+
+function buildCategoryView(category: AssetCategory): AssetRegistryCategoryView {
+    return {
+        category,
+        effective: ALLOWED_ASSETS[category].map((asset) => ({ ...asset })),
+        custom: state.custom[category].map((asset) => ({ ...asset })),
+        removals: [...state.removals[category]],
+        overrides: { ...state.overrides[category] }
+    }
 }
 
 function sanitizeAllowedAsset(asset: unknown): AllowedAsset | null {
@@ -220,23 +257,199 @@ export function getAssetRegistryView(category?: AssetCategory): AssetRegistryVie
     assertInitialized()
 
     if (category) {
-        return {
-            category,
-            effective: ALLOWED_ASSETS[category].map((asset) => ({ ...asset })),
-            custom: state.custom[category].map((asset) => ({ ...asset })),
-            removals: [...state.removals[category]],
-            overrides: { ...state.overrides[category] }
-        }
+        return buildCategoryView(category)
     }
 
     const categories = {} as Record<AssetCategory, AssetRegistryCategoryView>
     for (const cat of CATEGORIES) {
-        categories[cat] = {
-            category: cat,
-            effective: ALLOWED_ASSETS[cat].map((asset) => ({ ...asset })),
-            custom: state.custom[cat].map((asset) => ({ ...asset })),
-            removals: [...state.removals[cat]],
-            overrides: { ...state.overrides[cat] }
+        categories[cat] = buildCategoryView(cat)
+    }
+
+    return { categories }
+}
+
+async function validateRegistryCategoryWithTwelveData(
+    category: AssetCategory
+): Promise<AssetRegistryCategoryProviderValidation> {
+    const validatedAt = new Date().toISOString()
+    const assets = ALLOWED_ASSETS[category]
+    const apiKey = config.apiKeys.twelvedata
+
+    const results: ProviderValidatedAssetView[] = []
+    const requestedByWireSymbol = new Map<string, AllowedAsset[]>()
+
+    for (const asset of assets) {
+        const wireSymbol = mapToTwelvedataSymbol(asset.name, category)
+
+        if (!wireSymbol) {
+            results.push({
+                symbol: asset.name,
+                displayName: asset.displayName,
+                wireSymbol: null,
+                available: false,
+                reason: 'No Twelvedata symbol mapping available for this asset'
+            })
+            continue
+        }
+
+        if (!requestedByWireSymbol.has(wireSymbol)) {
+            requestedByWireSymbol.set(wireSymbol, [])
+        }
+        requestedByWireSymbol.get(wireSymbol)!.push(asset)
+    }
+
+    if (!apiKey) {
+        for (const [wireSymbol, wireAssets] of requestedByWireSymbol.entries()) {
+            for (const asset of wireAssets) {
+                results.push({
+                    symbol: asset.name,
+                    displayName: asset.displayName,
+                    wireSymbol,
+                    available: false,
+                    reason: 'TWELVEDATA_API_KEY is not configured'
+                })
+            }
+        }
+
+        return {
+            provider: 'twelvedata',
+            validatedAt,
+            availableCount: 0,
+            unavailableCount: results.length,
+            assets: sortProviderValidatedAssets(results)
+        }
+    }
+
+    const payloadByWireSymbol = new Map<string, any>()
+    const wireSymbols = Array.from(requestedByWireSymbol.keys())
+
+    for (let i = 0; i < wireSymbols.length; i += API_CONFIG.chunkSize) {
+        const chunk = wireSymbols.slice(i, i + API_CONFIG.chunkSize)
+
+        try {
+            const response = await axios.get(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.quote}`, {
+                params: {
+                    symbol: chunk.join(','),
+                    apikey: apiKey
+                },
+                timeout: API_CONFIG.requestTimeoutMs
+            })
+
+            const payload = response.data
+            if (payload && typeof payload === 'object' && 'symbol' in payload) {
+                const wireSymbol = payload.symbol || chunk[0]
+                payloadByWireSymbol.set(wireSymbol, payload)
+                continue
+            }
+
+            if (payload && typeof payload === 'object') {
+                for (const requestedWireSymbol of chunk) {
+                    const wirePayload = payload[requestedWireSymbol]
+                    if (wirePayload && typeof wirePayload === 'object') {
+                        payloadByWireSymbol.set(requestedWireSymbol, wirePayload)
+                    }
+                }
+            }
+        } catch (error: any) {
+            const message = error?.response?.data?.message || error?.message || 'Unknown validation error'
+            logger.error('Bulk Twelvedata registry validation request failed', {
+                category,
+                chunk,
+                message
+            })
+
+            for (const wireSymbol of chunk) {
+                payloadByWireSymbol.set(wireSymbol, {
+                    status: 'error',
+                    message
+                })
+            }
+        }
+    }
+
+    for (const [wireSymbol, wireAssets] of requestedByWireSymbol.entries()) {
+        const payload = payloadByWireSymbol.get(wireSymbol)
+        const numericPrice = Number(payload?.close ?? payload?.price ?? payload?.previous_close)
+        const available = Boolean(payload) &&
+            payload.status !== 'error' &&
+            Number.isFinite(numericPrice)
+
+        const reason = !payload
+            ? 'No quote returned from Twelvedata'
+            : payload.status === 'error'
+                ? payload.message || 'Twelvedata returned an error'
+                : Number.isFinite(numericPrice)
+                    ? undefined
+                    : 'No valid price returned from Twelvedata'
+
+        for (const asset of wireAssets) {
+            results.push({
+                symbol: asset.name,
+                displayName: asset.displayName,
+                wireSymbol,
+                available,
+                providerSymbol: payload?.symbol || wireSymbol,
+                providerName: payload?.name,
+                price: available ? numericPrice : undefined,
+                reason
+            })
+        }
+    }
+
+    const availableCount = results.filter((item) => item.available).length
+
+    return {
+        provider: 'twelvedata',
+        validatedAt,
+        availableCount,
+        unavailableCount: results.length - availableCount,
+        assets: sortProviderValidatedAssets(results)
+    }
+}
+
+function sortProviderValidatedAssets(assets: ProviderValidatedAssetView[]): ProviderValidatedAssetView[] {
+    return [...assets].sort((left, right) => left.symbol.localeCompare(right.symbol))
+}
+
+export async function getAssetRegistryViewWithTwelveDataValidation(options?: {
+    category?: AssetCategory
+    onlyAvailable?: boolean
+}): Promise<AssetRegistryViewWithProviderValidation | AssetRegistryCategoryViewWithProviderValidation> {
+    assertInitialized()
+
+    const onlyAvailable = options?.onlyAvailable === true
+    const categoriesToValidate = options?.category ? [options.category] : CATEGORIES
+
+    if (options?.category) {
+        const view = buildCategoryView(options.category)
+        const providerValidation = await validateRegistryCategoryWithTwelveData(options.category)
+        const availableSymbols = new Set(
+            providerValidation.assets.filter((asset) => asset.available).map((asset) => asset.symbol)
+        )
+
+        return {
+            ...view,
+            effective: onlyAvailable
+                ? view.effective.filter((asset) => availableSymbols.has(asset.name))
+                : view.effective,
+            providerValidation
+        }
+    }
+
+    const categories = {} as Record<AssetCategory, AssetRegistryCategoryViewWithProviderValidation>
+    for (const category of categoriesToValidate) {
+        const view = buildCategoryView(category)
+        const providerValidation = await validateRegistryCategoryWithTwelveData(category)
+        const availableSymbols = new Set(
+            providerValidation.assets.filter((asset) => asset.available).map((asset) => asset.symbol)
+        )
+
+        categories[category] = {
+            ...view,
+            effective: onlyAvailable
+                ? view.effective.filter((asset) => availableSymbols.has(asset.name))
+                : view.effective,
+            providerValidation
         }
     }
 
@@ -497,4 +710,3 @@ export async function validateAssetWithTwelveData(input: {
         }
     }
 }
-
