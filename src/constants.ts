@@ -105,6 +105,7 @@ export const ALLOWED_ASSETS: Record<AssetCategory, AllowedAsset[]> = {
         { name: "TRIP", displayName: "Tripadvisor, Inc.", tv_sym: "NASDAQ:TRIP" },
         { name: "RACE", displayName: "Ferrari N.V.", tv_sym: "NYSE:RACE" },
         { name: "CMCSA", displayName: "Comcast Corporation", tv_sym: "NASDAQ:CMCSA" },
+        { name: "SPCX", displayName: "Space Exploration Technologies Corp. Class A", tv_sym: "NASDAQ:SPCX" },
         { name: "TSLA", displayName: "Tesla, Inc.", tv_sym: "NASDAQ:TSLA" },
         { name: "SHOP", displayName: "Shopify Inc.", tv_sym: "NASDAQ:SHOP" },
         { name: "BMY", displayName: "Bristol-Myers Squibb Company", tv_sym: "NYSE:BMY" },
